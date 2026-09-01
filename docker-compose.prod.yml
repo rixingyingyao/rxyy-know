@@ -149,7 +149,7 @@ services:
     image: yuxi-web:${YUXI_VERSION:-0.7.1.beta1}
     container_name: web-prod
     ports:
-      - "80:80"
+      - "${WEB_PUBLISH:-80:80}"
     depends_on:
       - api
     networks:
@@ -167,7 +167,8 @@ services:
       - ./docker/volumes/neo4j/data:/data
       - ./docker/volumes/neo4j/logs:/var/lib/neo4j/logs
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:7474 || exit 1"]
+      # neo4j:5.26 镜像不带 curl，用镜像自带的 wget 探活
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:7474 || exit 1"]
       interval: 20s
       timeout: 10s
       retries: 5
@@ -252,7 +253,7 @@ services:
     image: postgres:16
     container_name: postgres
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PUBLISH:-5432:5432}"
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}

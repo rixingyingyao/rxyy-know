@@ -56,3 +56,7 @@ RUN uv sync --no-cache --group test --no-dev --frozen
 
 # 复制 server 代码
 COPY backend/server /app/server
+
+# 运维脚本（种子账号等）。开发模式由 compose bind mount 提供，
+# 生产镜像必须自带，否则 `make seed` 在生产部署里无脚本可跑。
+COPY backend/scripts /app/scripts

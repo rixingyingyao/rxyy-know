@@ -3,8 +3,9 @@ FROM node:24-alpine AS development
 WORKDIR /app
 ENV TZ=Asia/Shanghai
 
-# 安装 pnpm
-RUN npm install -g pnpm@latest
+# 版本须与 web/package.json 的 packageManager 一致：pnpm 11 起会校验
+# @pnpm/exe 原生二进制是否登记在 lockfile 里，用 latest 会让旧 lockfile 直接构建失败
+RUN npm install -g pnpm@10.11.0
 
 # 复制 package.json 和 pnpm-lock.yaml
 COPY ./web/package*.json ./
@@ -25,8 +26,8 @@ EXPOSE 5173
 FROM node:24-alpine AS build-stage
 WORKDIR /app
 
-# 安装 pnpm
-RUN npm install -g pnpm@latest
+# 同上：pnpm 版本与 lockfile 对齐，避免 --frozen-lockfile 校验失败
+RUN npm install -g pnpm@10.11.0
 
 # 复制依赖文件
 COPY ./web/package*.json ./
