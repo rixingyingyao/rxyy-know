@@ -1,0 +1,418 @@
+x-api-worker-env: &api-worker-env
+  HOST_IP: ${HOST_IP:-}
+  LITE_MODE: ${LITE_MODE:-false}
+  RUNNING_IN_DOCKER: "true"
+  YUXI_ENV: development
+  # DBs and other services
+  POSTGRES_URL: ${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yuxi}}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  NEO4J_URI: ${NEO4J_URI:-bolt://graph:7687}
+  NEO4J_USERNAME: ${NEO4J_USERNAME:-neo4j}
+  NEO4J_PASSWORD: ${NEO4J_PASSWORD:-0123456789}
+  MILVUS_URI: ${MILVUS_URI:-http://milvus:19530}
+  MILVUS_DB_NAME: ${MILVUS_DB_NAME:-default}
+  MILVUS_TOKEN: ${MILVUS_TOKEN:-}
+  MINIO_URI: ${MINIO_URI:-http://minio:9000}
+  MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-}
+  # 文档解析
+  MINERU_API_URI: ${MINERU_API_URI:-http://mineru-api:30001}
+  PADDLEX_URI: ${PADDLEX_URI:-http://paddlex:8080}
+  # Sandbox related
+  YUXI_DOCKER_API_BASE: ${YUXI_DOCKER_API_BASE:-http://localhost}
+  SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-provisioner}
+  SANDBOX_PROVISIONER_URL: ${SANDBOX_PROVISIONER_URL:-http://sandbox-provisioner:8002}
+  SANDBOX_VIRTUAL_PATH_PREFIX: ${SANDBOX_VIRTUAL_PATH_PREFIX:-/home/gem/user-data}
+  SANDBOX_EXEC_TIMEOUT_SECONDS: ${SANDBOX_EXEC_TIMEOUT_SECONDS:-180}
+  SANDBOX_MAX_OUTPUT_BYTES: ${SANDBOX_MAX_OUTPUT_BYTES:-262144}
+  # Model request timeouts
+  EMBEDDING_TIMEOUT: ${EMBEDDING_TIMEOUT:-600}
+  LLM_TIMEOUT: ${LLM_TIMEOUT:-600}
+  # Agent run
+  RUN_CANCEL_KEY_TTL_SECONDS: ${RUN_CANCEL_KEY_TTL_SECONDS:-1800}
+  RUN_EVENTS_STREAM_TTL_SECONDS: ${RUN_EVENTS_STREAM_TTL_SECONDS:-7200}
+  YUXI_CORS_ORIGINS: ${YUXI_CORS_ORIGINS:-}
+  # 其他环境变量
+  NO_PROXY: localhost,127.0.0.1,milvus,graph,minio,milvus-etcd-dev,etcd,mineru,paddlex,sandbox-provisioner,api.siliconflow.cn
+  no_proxy: localhost,127.0.0.1,milvus,graph,minio,milvus-etcd-dev,etcd,mineru,paddlex,sandbox-provisioner,api.siliconflow.cn
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: yuxi-api:${YUXI_VERSION:-0.7.1.beta1}
+    container_name: api-dev
+    working_dir: /app
+    volumes:
+      - ./backend/server:/app/server
+      - ./backend/package:/app/package
+      - ./docker/volumes/yuxi:/app/saves
+      - ./docker/volumes/models:/app/models
+      - ./backend/test:/app/test
+      - ./backend/scripts:/app/scripts
+      - ./docker/sandbox_provisioner:/app/docker/sandbox_provisioner:ro
+      - ./.env:/app/.env
+      - /var/run/docker.sock:/var/run/docker.sock
+      - nltk_data:/root/nltk_data  # 使用命名卷持久化NLTK数据，避免路径展开差异
+    ports:
+      - "5050:5050"
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    # region api_envs
+    environment:
+      <<: *api-worker-env
+    # endregion api_envs
+    command: uv run --no-sync --no-dev uvicorn server.main:app --host 0.0.0.0 --port 5050 --reload --reload-dir /app/server --reload-dir /app/package
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5050/api/system/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 180s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      sandbox-provisioner:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: yuxi-api:${YUXI_VERSION:-0.7.1.beta1}
+    container_name: worker-dev
+    working_dir: /app
+    volumes:
+      - ./backend/server:/app/server
+      - ./backend/package:/app/package
+      - ./docker/volumes/yuxi:/app/saves
+      - ./docker/volumes/models:/app/models
+      - ./backend/test:/app/test
+      - ./backend/scripts:/app/scripts
+      - ./docker/sandbox_provisioner:/app/docker/sandbox_provisioner:ro
+      - ./.env:/app/.env
+      - ./backend/pyproject.toml:/app/pyproject.toml
+      - ./backend/uv.lock:/app/uv.lock
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    environment:
+      <<: *api-worker-env
+    command: watchfiles --filter python "arq server.worker_main.WorkerSettings" /app/server /app/package
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      sandbox-provisioner:
+        condition: service_healthy
+
+  sandbox-provisioner:
+    build:
+      context: ./docker/sandbox_provisioner
+      dockerfile: Dockerfile
+    image: yuxi-sandbox-provisioner:${YUXI_VERSION:-0.7.1.beta1}
+    container_name: sandbox-provisioner
+    volumes:
+      - ./docker/volumes/yuxi:/app/saves
+      - ./docker/sandbox_provisioner/app.py:/app/app.py:ro
+      - ./docker/sandbox_provisioner/sandbox.env:/app/sandbox.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8002:8002"
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Common provisioner settings
+      - PROVISIONER_BACKEND=${SANDBOX_PROVISIONER_BACKEND:-docker}
+      - SANDBOX_IMAGE=${SANDBOX_IMAGE:-enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest}
+      - SANDBOX_CONTAINER_PORT=${SANDBOX_CONTAINER_PORT:-8080}
+      - MEMORY_SANDBOX_URL_TEMPLATE=${MEMORY_SANDBOX_URL_TEMPLATE:-http://agent-sandbox:8000}
+      - SANDBOX_HEALTH_TIMEOUT_SECONDS=${SANDBOX_HEALTH_TIMEOUT_SECONDS:-300}
+      - SANDBOX_IDLE_TIMEOUT_SECONDS=${SANDBOX_IDLE_TIMEOUT_SECONDS:-120}
+      - SANDBOX_IDLE_CHECK_INTERVAL_SECONDS=${SANDBOX_IDLE_CHECK_INTERVAL_SECONDS:-10}
+      - SANDBOX_EXEC_TIMEOUT_SECONDS=${SANDBOX_EXEC_TIMEOUT_SECONDS:-180}
+      # Optional proxy for sandbox-provisioner container
+      - HTTP_PROXY=${SANDBOX_HTTP_PROXY:-}
+      - HTTPS_PROXY=${SANDBOX_HTTPS_PROXY:-}
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal
+      # Docker backend only
+      - DOCKER_NETWORK=${SANDBOX_DOCKER_NETWORK:-yuxi-know_app-network}
+      - DOCKER_THREADS_HOST_PATH=${SANDBOX_DOCKER_THREADS_HOST_PATH:-}
+      - DOCKER_SANDBOX_PREFIX=${SANDBOX_DOCKER_SANDBOX_PREFIX:-yuxi-sandbox}
+      - DOCKER_SANDBOX_HOST=${SANDBOX_DOCKER_SANDBOX_HOST:-host.docker.internal}
+      # Kubernetes backend only
+      - K8S_NAMESPACE=${SANDBOX_K8S_NAMESPACE:-yuxi-know}
+      - NODE_HOST=${SANDBOX_NODE_HOST:-host.docker.internal}
+      - KUBECONFIG_PATH=${KUBECONFIG_PATH:-}
+      - THREAD_PVC=${THREAD_PVC:-yuxi-thread}
+      - SKILLS_PVC=${SKILLS_PVC:-yuxi-skills}
+    command: >
+      sh -lc "python -c 'import docker' >/dev/null 2>&1 || pip install --no-cache-dir 'docker>=7.1.0';
+      uvicorn app:app --host 0.0.0.0 --port 8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      target: development
+    image: yuxi-web:${YUXI_VERSION:-0.7.1.beta1}
+    container_name: web-dev
+    volumes:
+      - ./web/src:/app/src
+      - ./web/public:/app/public
+      - ./web/index.html:/app/index.html
+      - ./web/vite.config.js:/app/vite.config.js
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    networks:
+      - app-network
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://api:5050
+      - VITE_USE_RUNS_API=${VITE_USE_RUNS_API:-false}
+      - VITE_LITE_MODE=${LITE_MODE:-}
+      - VITE_ALLOWED_HOSTS=${VITE_ALLOWED_HOSTS:-localhost}
+    command: pnpm run server
+    restart: unless-stopped
+
+  # region neo4j
+  graph:
+    image: neo4j:5.26
+    container_name: graph
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - ./docker/volumes/neo4j/data:/data
+      - ./docker/volumes/neo4j/logs:/var/lib/neo4j/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -a bolt://localhost:7687 -u ${NEO4J_USERNAME:-neo4j} -p ${NEO4J_PASSWORD:-0123456789} 'RETURN 1;' >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:
+      - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-0123456789}
+      - NEO4J_server_bolt_listen__address=0.0.0.0:7687
+      - NEO4J_server_http_listen__address=0.0.0.0:7474
+      - ENTITY_EMBEDDING=true
+    networks:
+      - app-network
+    restart: unless-stopped
+  # endregion neo4j
+
+  etcd:
+    container_name: milvus-etcd-dev
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ./docker/volumes/milvus/etcd:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  minio:
+    container_name: minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - ./docker/volumes/milvus/minio:/minio_data
+      - ./docker/volumes/milvus/minio_config:/root/.minio
+    command: minio server /minio_data --address 0.0.0.0:9000 --console-address 0.0.0.0:9001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  milvus:
+    image: milvusdb/milvus:v2.5.6
+    container_name: milvus
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MILVUS_LOG_LEVEL: error
+    volumes:
+      - ./docker/volumes/milvus/milvus:/var/lib/milvus
+      - ./docker/volumes/milvus/logs:/var/lib/milvus/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 60s
+      start_period: 120s
+      timeout: 30s
+      retries: 5
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - "etcd"
+      - "minio"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-yuxi}
+      - TZ=${TZ:-Asia/Shanghai}
+    volumes:
+      - ./docker/volumes/postgresql:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-yuxi} || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ./docker/volumes/redis:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # lastest version: wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
+  mineru-api:
+    build:
+      context: .
+      dockerfile: docker/mineru.Dockerfile
+    image: mineru-vllm:latest
+    container_name: mineru-api
+    profiles:
+      - all
+    env_file:
+      - .env
+    ports:
+      - 30001:30001
+    environment:
+      MINERU_MODEL_SOURCE: local
+      VLLM_USE_V1: "1"
+    entrypoint: mineru-api
+    command:
+      --host 0.0.0.0
+      --port 30001
+      # --allow-public-http-client  # Disabled by default; when binding to 0.0.0.0 or ::, this re-enables *-http-client backends and server_url. Enable only if you accept the SSRF risk.
+      # parameters for vllm-engine
+      # --gpu-memory-utilization 0.5  # If encountering VRAM shortage, reduce the KV cache size by this parameter; if VRAM issues persist, try lowering it further to `0.4` or below.
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    ipc: host
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:30001/health || exit 1"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]  # Modify for multiple GPUs: ["0", "1"]
+              capabilities: [gpu]
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  paddlex:
+    build:
+      context: .
+      dockerfile: docker/paddlex.Dockerfile
+    image: paddlex:latest
+    container_name: paddlex-ocr
+    profiles:
+      - all
+    volumes:
+      - ./docker/volumes/paddlex:/paddlex
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  nltk_data:
+
+networks:
+  app-network:
+    driver: bridge
+    name: ${SANDBOX_DOCKER_NETWORK:-yuxi-know_app-network}

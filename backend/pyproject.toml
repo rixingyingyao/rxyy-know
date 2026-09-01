@@ -1,0 +1,76 @@
+[project]
+name = "yuxi-workspace"
+version = "0.7.1.beta1"
+description = "基于大模型的智能知识库与知识图谱智能体开发平台，融合了 RAG 技术与知识图谱技术，基于 LangGraph v1 + Vue.js + FastAPI + LightRAG 架构构建"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi>=0.121",
+    "uvicorn[standard]>=0.34.2",
+    "arq>=0.26.3",
+    "yuxi",
+]
+[tool.ruff]
+line-length = 120  # 代码最大行宽
+lint.select = [         # 选择的规则
+    "F",
+    "E",
+    "W",
+    "UP",
+]
+
+[tool.uv]
+constraint-dependencies = [
+    "aiohttp>=3.14.1",
+    "cryptography>=48.0.1",
+    "langchain>=1.3.9",
+    "langchain-anthropic>=1.4.6",
+    "pypdf>=6.13.3",
+    "pyjwt>=2.13.0",
+    "python-multipart>=0.0.31",
+    "starlette>=1.3.1",
+    "torch>=2.12.1",
+]
+
+[[tool.uv.index]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+yuxi = { path = "package", editable = true }
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+
+[tool.pytest.ini_options]
+addopts = "-v --tb=short"
+testpaths = ["test/unit", "test/integration", "test/e2e"]
+pythonpath = [".", "package"]
+markers = [
+    "unit: marks tests that run without live services",
+    "auth: marks tests that require authentication",
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+    "e2e: marks tests as end-to-end tests"
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.1",
+]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-httpx>=0.32.0",
+    "pytest-cov>=6.0.0",
+]

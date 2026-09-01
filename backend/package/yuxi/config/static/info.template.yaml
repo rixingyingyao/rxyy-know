@@ -1,0 +1,27 @@
+# 单位信息配置文件
+# 用于配置网站的基本信息、品牌信息等
+#
+# 想换成自己的品牌时，不要直接改本文件：
+#   cp info.template.yaml info.local.yaml
+# 然后在 .env 里指定 YUXI_BRAND_FILE_PATH 指向 info.local.yaml。
+# info.local.yaml 已在 .gitignore 中，不会被提交。
+
+# 组织信息
+organization:
+  name: "rxyy-know"          # 完整组织名称
+  logo: "/logo.svg"          # Logo文件路径（放在 web/public 目录下）
+  avatar: "/logo.svg"        # 头像文件路径（放在 web/public 目录下）
+  login_bg: "/login-bg.svg"  # 登录背景图片路径（放在 web/public 目录下）
+
+# 项目信息
+branding:
+  name: "rxyy-know"
+  title: "rxyy-know"     # 系统标题
+  subtitle: "大模型驱动的知识库与知识图谱智能体平台"          # 副标题（subtitles 为空时使用）
+  subtitles:
+    - "大模型驱动的知识库与知识图谱智能体平台"
+    - "让知识可检索、可推理、可交付"
+
+# 页脚信息
+footer:
+  copyright: "© rxyy 2026 · v{{YUXI_VERSION}}"

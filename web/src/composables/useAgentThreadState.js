@@ -1,0 +1,96 @@
+const createOnGoingConvState = () => ({
+  msgChunks: {},
+  currentRequestKey: null,
+  currentAssistantKey: null,
+  toolCallBuffers: {}
+})
+
+export function useAgentThreadState({
+  chatState,
+  getCurrentThreadId,
+  onStopThread = null,
+  onBeforeResetThread = null,
+  onBeforeCleanupThread = null
+}) {
+  const resetThreadUiState = (threadState) => {
+    if (!threadState) return
+    threadState.replyLoadingVisible = false
+    threadState.pendingRequestId = null
+  }
+
+  const getThreadState = (threadId) => {
+    if (!threadId) return null
+    if (!chatState.threadStates[threadId]) {
+      chatState.threadStates[threadId] = {
+        isStreaming: false,
+        runStreamAbortController: null,
+        activeRunId: null,
+        runLastSeq: '0-0',
+        lastRetryableJobTry: null,
+        replyLoadingVisible: false,
+        pendingRequestId: null,
+        pendingInterrupt: null,
+        onGoingConv: createOnGoingConvState(),
+        agentState: null,
+        contextCompressing: false
+      }
+    }
+    return chatState.threadStates[threadId]
+  }
+
+  const stopThreadStream = (threadId) => {
+    if (!threadId) return
+    if (typeof onStopThread === 'function') {
+      onStopThread(threadId)
+    }
+  }
+
+  const cleanupThreadState = (threadId) => {
+    if (!threadId) return
+    const threadState = chatState.threadStates[threadId]
+    if (!threadState) return
+
+    if (typeof onBeforeCleanupThread === 'function') {
+      onBeforeCleanupThread(threadId)
+    }
+
+    if (threadState.runStreamAbortController) {
+      threadState.runStreamAbortController.abort()
+    }
+    delete chatState.threadStates[threadId]
+  }
+
+  const resetOnGoingConv = (threadId = null) => {
+    const targetThreadId =
+      threadId || (typeof getCurrentThreadId === 'function' ? getCurrentThreadId() : null)
+
+    if (targetThreadId) {
+      const threadState = getThreadState(targetThreadId)
+      if (!threadState) return
+
+      if (typeof onBeforeResetThread === 'function') {
+        onBeforeResetThread(targetThreadId)
+      }
+
+      if (threadState.runStreamAbortController) {
+        threadState.runStreamAbortController.abort()
+        threadState.runStreamAbortController = null
+      }
+
+      threadState.onGoingConv = createOnGoingConvState()
+      resetThreadUiState(threadState)
+      return
+    }
+
+    Object.keys(chatState.threadStates).forEach((id) => {
+      cleanupThreadState(id)
+    })
+  }
+
+  return {
+    getThreadState,
+    cleanupThreadState,
+    resetOnGoingConv,
+    stopThreadStream
+  }
+}
