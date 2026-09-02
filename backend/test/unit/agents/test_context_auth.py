@@ -32,6 +32,9 @@ def test_get_configurable_items_filters_admin_fields_for_user():
     items = BaseContext.get_configurable_items(user_role="user")
 
     assert "system_prompt" in items
+    assert items["system_prompt"]["default"] == context_module.DEFAULT_CHAT_PERSONA
+    assert "You are a helpful assistant." not in items["system_prompt"]["default"]
+    assert "语析" not in items["system_prompt"]["default"]
     assert "summary_threshold" not in items
     assert "summary_keep_messages" not in items
     assert "summary_prompt" not in items
@@ -44,6 +47,9 @@ def test_get_configurable_items_allows_admin_and_superadmin_fields():
     superadmin_items = SuperAdminOnlyContext.get_configurable_items(user_role="superadmin")
 
     assert "summary_threshold" in admin_items
+    assert admin_items["summary_threshold"]["default"] == context_module.DEFAULT_SUMMARY_THRESHOLD_K
+    assert context_module.DEFAULT_SUMMARY_THRESHOLD_K == 900
+    assert context_module.DEFAULT_SUMMARY_THRESHOLD_K * 1024 < 991808
     assert "summary_keep_messages" in admin_items
     assert "summary_prompt" in admin_items
     assert "summary_tool_result_token_limit" in admin_items

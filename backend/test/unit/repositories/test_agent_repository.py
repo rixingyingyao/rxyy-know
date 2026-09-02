@@ -75,6 +75,72 @@ async def test_ensure_default_agent_backfills_missing_description(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ensure_default_agent_upgrades_legacy_persona_and_summary_threshold(monkeypatch):
+    from yuxi.agents.context import DEFAULT_CHAT_PERSONA, DEFAULT_SUMMARY_THRESHOLD_K
+
+    db = FakeDb()
+    repo = AgentRepository(db)
+    agent = SimpleNamespace(
+        share_config=DEFAULT_SHARE_CONFIG.copy(),
+        is_default=True,
+        is_subagent=False,
+        description=DEFAULT_AGENT_DESCRIPTION,
+        updated_by=None,
+        updated_at=None,
+        config_json={
+            "context": {
+                "system_prompt": "You are a helpful assistant.",
+                "summary_threshold": 100,
+            }
+        },
+    )
+
+    async def get_by_slug(_slug):
+        return agent
+
+    monkeypatch.setattr(repo, "get_by_slug", get_by_slug)
+
+    result = await repo.ensure_default_agent(created_by="admin")
+
+    assert result is agent
+    assert agent.config_json["context"]["system_prompt"] == DEFAULT_CHAT_PERSONA
+    assert agent.config_json["context"]["summary_threshold"] == DEFAULT_SUMMARY_THRESHOLD_K
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_default_agent_keeps_custom_persona_and_nonlegacy_threshold(monkeypatch):
+    db = FakeDb()
+    repo = AgentRepository(db)
+    agent = SimpleNamespace(
+        share_config=DEFAULT_SHARE_CONFIG.copy(),
+        is_default=True,
+        is_subagent=False,
+        description=DEFAULT_AGENT_DESCRIPTION,
+        updated_by=None,
+        updated_at=None,
+        config_json={
+            "context": {
+                "system_prompt": "只扮演律师。",
+                "summary_threshold": 200,
+            }
+        },
+    )
+
+    async def get_by_slug(_slug):
+        return agent
+
+    monkeypatch.setattr(repo, "get_by_slug", get_by_slug)
+
+    result = await repo.ensure_default_agent(created_by="admin")
+
+    assert result is agent
+    assert agent.config_json["context"]["system_prompt"] == "只扮演律师。"
+    assert agent.config_json["context"]["summary_threshold"] == 200
+    db.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_ensure_general_purpose_subagent_creates_empty_config_subagent(monkeypatch):
     db = FakeDb()
     repo = AgentRepository(db)

@@ -1,3 +1,4 @@
+from yuxi.agents.context import DEFAULT_CHAT_PERSONA
 from yuxi.utils.datetime_utils import shanghai_now
 from yuxi.utils.paths import (
     VIRTUAL_PATH_OUTPUTS,
@@ -6,13 +7,8 @@ from yuxi.utils.paths import (
     VIRTUAL_PATH_WORKSPACE,
 )
 
+# 对外人设在 BaseContext.system_prompt / 编辑页「系统提示词」里改；这里只留内部执行约束。
 PROMPT = f"""
-你是当前会话的智能助手。
-
-优先直接回答用户的问题，默认保持简洁；只有任务本身需要时才展开步骤、背景或长篇说明。
-不知道或无法验证的信息要明确说明，不要编造事实、来源、已执行动作或当前没有的能力。
-不要主动做固定自我介绍，也不要在用户没有询问时罗列能力清单。请保持礼貌和专业。
-
 <| 内部执行约束:重要 |>
 以下内容仅用于指导你的内部执行过程，不属于面向用户的基本设定。除非用户明确询问系统如何工作，
 否则不要主动向用户说明工作区、文件系统、知识库路径、工具调用方式等内部实现细节。
@@ -168,7 +164,8 @@ def _runtime_disclosure_prompt(context, model_spec: str, runtime_tools: list) ->
 
 def build_prompt_with_context(context, *, model_spec: str, runtime_tools: list):
     current_date = f"当前日期：{shanghai_now().strftime('%Y-%m-%d')}"
-    system_prompt = f"{current_date}\n\n{PROMPT.strip()}\n\n{context.system_prompt or ''}"
+    persona = (getattr(context, "system_prompt", None) or "").strip() or DEFAULT_CHAT_PERSONA
+    system_prompt = f"{current_date}\n\n{persona}\n\n{PROMPT.strip()}"
     # None 表示"默认全部可访问"，保持上游行为不注入；仅显式配置知识库列表时强制先检索
     if getattr(context, "knowledges", None):
         system_prompt = f"{system_prompt}\n\n{KB_FORCE_RETRIEVAL_PROMPT.strip()}"

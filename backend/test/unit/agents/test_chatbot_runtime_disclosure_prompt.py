@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
-from yuxi.agents.buildin.chatbot.prompt import build_prompt_with_context
+from yuxi.agents.buildin.chatbot.prompt import PROMPT, build_prompt_with_context
+from yuxi.agents.context import DEFAULT_CHAT_PERSONA
 
 
 def _context(**overrides):
@@ -108,3 +109,33 @@ def test_skill_gated_tools_are_omitted_from_direct_tool_list_until_activated():
     assert "list_kbs" not in direct_tools_line
     assert "知识库（knowledge-base）" in prompt
     assert "alibaba:qwen3.7-plus" in prompt
+
+
+def test_internal_prompt_does_not_hardcode_user_facing_persona():
+    assert "你是当前会话的智能助手" not in PROMPT
+    assert "语析" not in PROMPT
+    assert "<| 内部执行约束:重要 |>" in PROMPT
+
+
+def test_editable_system_prompt_is_the_persona_layer():
+    prompt = build_prompt_with_context(
+        _context(system_prompt="只扮演产品顾问。"),
+        model_spec="alibaba:qwen3.7-plus",
+        runtime_tools=[],
+    )
+
+    assert "只扮演产品顾问。" in prompt
+    assert "你是当前会话的智能助手" not in prompt
+    assert "<| 内部执行约束:重要 |>" in prompt
+    assert "语析" not in prompt
+
+
+def test_empty_system_prompt_falls_back_to_default_persona():
+    prompt = build_prompt_with_context(
+        _context(system_prompt=""),
+        model_spec="alibaba:qwen3.7-plus",
+        runtime_tools=[],
+    )
+
+    assert DEFAULT_CHAT_PERSONA.splitlines()[0] in prompt
+    assert "<| 内部执行约束:重要 |>" in prompt

@@ -7,6 +7,12 @@ from typing import Any, Literal
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from yuxi.agents.context import (
+    DEFAULT_CHAT_PERSONA,
+    DEFAULT_SUMMARY_THRESHOLD_K,
+    LEGACY_DEFAULT_SYSTEM_PROMPT,
+    LEGACY_SUMMARY_THRESHOLD_K,
+)
 from yuxi.storage.postgres.models_business import Agent, User
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.utils.share_config import SHARE_ACCESS_LEVELS, normalize_share_config
@@ -176,6 +182,28 @@ def _slugify(value: str | None) -> str:
     return base[:56] or f"agent-{uuid.uuid4().hex[:12]}"
 
 
+def _upgrade_default_chatbot_context(agent) -> bool:
+    """把旧版英文人设 / 100K 摘要阈值迁到可编辑默认值。自定义提示词与非 100 的阈值不改。"""
+    raw = getattr(agent, "config_json", None)
+    if not isinstance(raw, dict):
+        return False
+    ctx = raw.get("context")
+    if not isinstance(ctx, dict):
+        return False
+
+    changed = False
+    system_prompt = ctx.get("system_prompt")
+    if isinstance(system_prompt, str) and system_prompt.strip() == LEGACY_DEFAULT_SYSTEM_PROMPT:
+        ctx["system_prompt"] = DEFAULT_CHAT_PERSONA
+        changed = True
+    if ctx.get("summary_threshold") == LEGACY_SUMMARY_THRESHOLD_K:
+        ctx["summary_threshold"] = DEFAULT_SUMMARY_THRESHOLD_K
+        changed = True
+    if changed:
+        agent.config_json = {**raw, "context": dict(ctx)}
+    return changed
+
+
 class AgentRepository:
     def __init__(self, db_session: AsyncSession):
         self.db = db_session
@@ -192,6 +220,8 @@ class AgentRepository:
                 needs_update = True
             if getattr(agent, "is_subagent", False):
                 agent.is_subagent = False
+                needs_update = True
+            if _upgrade_default_chatbot_context(agent):
                 needs_update = True
             if not agent.is_default:
                 return await self.set_default(agent=agent, updated_by=created_by)

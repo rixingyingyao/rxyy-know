@@ -9,8 +9,16 @@ from yuxi.agents.backends.sandbox.paths import sandbox_workspace_agents_prompt_f
 from yuxi.utils.logging_config import logger
 
 WORKSPACE_AGENTS_PROMPT_MAX_BYTES = 64 * 1024
-DEFAULT_SUMMARY_THRESHOLD_K = 100  # 100K tokens
+DEFAULT_CHAT_PERSONA = """你是当前会话的智能助手。
+
+完整、准确地回答用户的问题；简单问题保持简洁，复杂问题按需要展开推理、步骤和背景。
+不知道或无法验证的信息要明确说明，不要编造事实、来源、已执行动作或当前没有的能力。
+不要主动做固定自我介绍，也不要在用户没有询问时罗列能力清单。请保持礼貌和专业。"""
+# 单位为 K（×1024 token）。Qwen3.7-Plus 窗口约 1,000,000，最大输入约 991,808；900K 给输出留余量。
+DEFAULT_SUMMARY_THRESHOLD_K = 900
 DEFAULT_SUMMARY_KEEP_MESSAGES = 10
+LEGACY_DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
+LEGACY_SUMMARY_THRESHOLD_K = 100
 DEFAULT_SUMMARY_TOOL_RESULT_TOKEN_LIMIT = 300
 DEFAULT_SUMMARY_L2_TRIGGER_RATIO = 0.4
 DEFAULT_MAX_EXECUTION_STEPS = 300
@@ -162,8 +170,18 @@ class BaseContext:
     )
 
     system_prompt: str = field(
-        default="You are a helpful assistant.",
-        metadata={"name": "系统提示词", "description": "用来描述智能体的角色和行为", "kind": "prompt"},
+        default=DEFAULT_CHAT_PERSONA,
+        metadata={
+            "name": "系统提示词",
+            "description": (
+                "智能体对外人设与行为准则，会出现在编辑页的「系统提示词」里，"
+                "改这里就是改真正对用户生效的身份。"
+                "平台仍会自动追加当前日期、内部执行约束（工作区路径、html:preview 等）"
+                "以及本次运行的模型/工具/知识库事实；"
+                "那些内部约束不在本框里，避免改人设时误伤执行规范。"
+            ),
+            "kind": "prompt",
+        },
     )
 
     model: str = field(
@@ -227,8 +245,9 @@ class BaseContext:
         metadata={
             "name": "上下文摘要触发阈值 (K)",
             "description": (
-                f"当上下文大小超过该值时，启用摘要功能以优化上下文使用。单位为 K，默认值为 "
-                f"{DEFAULT_SUMMARY_THRESHOLD_K}K。"
+                f"当估算上下文超过该值（单位 K，即 ×1024 token）时触发摘要压缩。"
+                f"默认 {DEFAULT_SUMMARY_THRESHOLD_K}K，接近 Qwen3.7-Plus 约 100 万 token 窗口"
+                f"（最大输入约 99 万），给输出留余量。家机内存或费用紧张时可调低；过低会提前丢掉对话细节。"
             ),
             "type": "number",
             "auth": "admin",
