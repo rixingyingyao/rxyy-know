@@ -240,7 +240,7 @@ config_json.context + runtime ids -> context_schema instance
 随后 Graph 构建会直接使用这份 Context：
 
 - `load_chat_model(context.model)` 选择主模型
-- `build_prompt_with_context(context)` 生成系统提示词
+- `build_prompt_with_context(context, model_spec=..., runtime_tools=...)` 生成系统提示词，并注入本次运行真实模型标识与实际启用资源
 - `resolve_configured_runtime_tools(context)` 组装已配置的内置工具和 MCP 工具
 - `KnowledgeBaseMiddleware` 根据 `_visible_knowledge_bases` 暴露知识库工具
 - `SkillsMiddleware` 根据 `_prompt_skills` 注入 Skill 提示段，并在 Skill 被激活后按需挂载工具与 MCP 依赖

@@ -1291,9 +1291,11 @@ defineExpose({
   width: 100%;
   margin: 0 auto;
   border: 1px solid var(--gray-150);
-  border-radius: 0.8rem;
+  border-radius: 1.5rem;
   box-shadow: 0 2px 8px var(--shadow-1);
-  transition: all 0.3s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
   background: var(--gray-0);
   gap: 0px;
   position: relative;
@@ -1333,11 +1335,10 @@ defineExpose({
     grid-column: 1 / -1;
   }
 
-  // &:focus-within {
-  //   border-color: var(--main-500);
-  //   background: var(--gray-0);
-  //   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  // }
+  &:focus-within {
+    border-color: var(--gray-300);
+    box-shadow: 0 2px 10px var(--shadow-1);
+  }
 
   &.dragging-files {
     border-color: var(--main-color);
@@ -1561,7 +1562,7 @@ defineExpose({
 
 @media (max-width: 520px) {
   .input-box {
-    border-radius: 15px;
+    border-radius: 1.25rem;
     padding: 0.625rem 0.875rem;
   }
 }

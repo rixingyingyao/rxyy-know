@@ -2,64 +2,78 @@
   <div class="refs" v-if="showRefs">
     <div class="tags">
       <!-- 反馈 -->
-      <span
+      <button
+        v-if="showKey('feedback')"
+        type="button"
         class="item btn"
         :class="{ disabled: feedbackState.hasSubmitted }"
+        :disabled="feedbackState.hasSubmitted"
         @click="likeThisResponse(msg)"
         :title="feedbackState.hasSubmitted && feedbackState.rating === 'like' ? '已点赞' : '点赞'"
       >
-        <ThumbsUp size="12" :fill="feedbackState.rating === 'like' ? 'currentColor' : 'none'" />
-      </span>
-      <span
+        <ThumbsUp size="16" :fill="feedbackState.rating === 'like' ? 'currentColor' : 'none'" />
+      </button>
+      <button
+        v-if="showKey('feedback')"
+        type="button"
         class="item btn"
         :class="{ disabled: feedbackState.hasSubmitted }"
+        :disabled="feedbackState.hasSubmitted"
         @click="dislikeThisResponse(msg)"
         :title="
           feedbackState.hasSubmitted && feedbackState.rating === 'dislike' ? '已点踩' : '点踩'
         "
       >
         <ThumbsDown
-          size="12"
+          size="16"
           :fill="feedbackState.rating === 'dislike' ? 'currentColor' : 'none'"
         />
-      </span>
+      </button>
       <!-- 模型名称 -->
-      <span v-if="showKey('model') && getModelName(msg)" class="item" @click="console.log(msg)">
-        <Bot size="12" /> {{ getModelName(msg) }}
+      <span v-if="showKey('model') && getModelName(msg)" class="item model-item">
+        <Bot size="15" /> {{ getModelName(msg) }}
       </span>
       <!-- 复制 -->
-      <span v-if="showKey('copy')" class="item btn" @click="copyText(msg.content)" title="复制">
-        <Check v-if="isCopied" size="12" />
-        <Copy v-else size="12" />
-      </span>
+      <button
+        v-if="showKey('copy')"
+        type="button"
+        class="item btn"
+        @click="copyText(msg.content)"
+        :title="isCopied ? '已复制' : '复制'"
+      >
+        <Check v-if="isCopied" size="16" />
+        <Copy v-else size="16" />
+      </button>
 
       <!-- 重试 -->
-      <span
+      <button
         v-if="showKey('regenerate')"
+        type="button"
         class="item btn"
         @click="regenerateMessage()"
         title="重新生成"
-        ><RotateCcw size="12" />
-      </span>
+        ><RotateCcw size="16" />
+      </button>
 
       <!-- 来源按钮 - 使用 flex-grow 占据剩余空间并右对齐 -->
       <div v-if="hasSources && showKey('sources')" class="sources-spacer"></div>
-      <span
+      <button
         v-if="hasSources && showKey('sources')"
+        type="button"
         class="item btn sources-btn"
         :class="{ expanded: isSourcesExpanded }"
         @click="toggleSources"
         :title="isSourcesExpanded ? '收起详情' : '查看来源详情'"
       >
-        <BookOpen size="12" />
+        <BookOpen size="16" />
         <span class="sources-label">
           来源
           <template v-if="sourceCount > 0">
             {{ sourceCount }}
           </template>
         </span>
-        <ChevronDown :size="12" class="expand-icon" :class="{ rotated: isSourcesExpanded }" />
-      </span>
+        <ChevronDown :size="14" class="expand-icon" :class="{ rotated: isSourcesExpanded }" />
+      </button>
     </div>
 
     <!-- 来源详情面板 -->
@@ -186,7 +200,7 @@ const showKey = (key) => {
   if (props.showRefs === true) {
     return true
   }
-  return props.showRefs.includes(key)
+  return Array.isArray(props.showRefs) && props.showRefs.includes(key)
 }
 
 // 复制状态
@@ -326,18 +340,21 @@ const cancelDislike = () => {
 .refs {
   display: flex;
   flex-direction: column;
-  margin-bottom: 20px;
-  margin-top: 10px;
+  margin: 8px 0 20px;
   color: var(--gray-500);
   font-size: 13px;
   gap: 12px;
 
   .item {
-    background: var(--gray-50);
+    min-width: 30px;
+    min-height: 30px;
+    border: none;
+    background: transparent;
     color: var(--gray-700);
-    padding: 6px 8px;
-    border-radius: 8px;
+    padding: 6px;
+    border-radius: 6px;
     font-size: 13px;
+    font-family: inherit;
     user-select: none;
     transition: all 0.2s ease;
     display: inline-flex;
@@ -350,6 +367,7 @@ const cancelDislike = () => {
       cursor: pointer;
       &:hover {
         background: var(--gray-100);
+        color: var(--gray-900);
       }
       &:active {
         background: var(--gray-200);
@@ -357,10 +375,20 @@ const cancelDislike = () => {
 
       // Disabled state - when feedback has been submitted
       &.disabled {
+        cursor: default;
+        opacity: 0.65;
+
         &:hover {
-          background: var(--gray-50);
+          background: transparent;
         }
       }
+    }
+
+    &.model-item {
+      width: auto;
+      padding-inline: 8px;
+      color: var(--gray-600);
+      background: var(--gray-50);
     }
   }
 
@@ -368,7 +396,7 @@ const cancelDislike = () => {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
+    gap: 2px;
     width: 100%;
 
     .sources-spacer {

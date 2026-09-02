@@ -105,7 +105,7 @@ const emit = defineEmits([
 
 const inputRef = ref(null)
 const currentImage = ref(null)
-const placeholder = '问点什么？使用 @ 可以提及哦~'
+const placeholder = '给智能体发送消息'
 
 const previewAttachments = computed(() => normalizeAttachmentPreviews(props.attachments))
 

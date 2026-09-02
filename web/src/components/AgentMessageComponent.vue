@@ -19,16 +19,6 @@
       { 'has-attachments': message.type === 'human' && messageAttachments.length }
     ]"
   >
-    <!-- 用户消息 -->
-    <div
-      v-if="message.type === 'human'"
-      class="message-copy-btn human-copy"
-      @click="copyToClipboard(message.content)"
-      :class="{ 'is-copied': isCopied }"
-    >
-      <Check v-if="isCopied" size="14" />
-      <Copy v-else size="14" />
-    </div>
     <p v-if="message.type === 'human'" class="message-text">
       <MentionTextRenderer :content="message.content" :display-labels="mentionDisplayLabels" />
     </p>
@@ -147,6 +137,28 @@
     </div>
   </div>
 
+  <div v-if="message.type === 'human'" class="human-message-actions" aria-label="用户消息操作">
+    <button
+      type="button"
+      class="message-action-btn"
+      title="编辑并重发"
+      :disabled="actionsDisabled"
+      @click="emit('editResend', message)"
+    >
+      <Pencil :size="15" />
+    </button>
+    <button
+      type="button"
+      class="message-action-btn"
+      :class="{ 'is-copied': isCopied }"
+      :title="isCopied ? '已复制' : '复制'"
+      @click="copyToClipboard(message.content)"
+    >
+      <Check v-if="isCopied" :size="15" />
+      <Copy v-else :size="15" />
+    </button>
+  </div>
+
   <Teleport to="body">
     <div
       v-if="imagePreview.visible"
@@ -165,7 +177,7 @@
 import { computed, ref, onUnmounted } from 'vue'
 import { CaretRightOutlined } from '@ant-design/icons-vue'
 import RefsComponent from '@/components/RefsComponent.vue'
-import { Copy, Check, X } from 'lucide-vue-next'
+import { Copy, Check, Pencil, X } from 'lucide-vue-next'
 import ToolCallsGroupComponent from '@/components/ToolCallsGroupComponent.vue'
 import GraphVizRenderer from '@/components/GraphVizRenderer.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
@@ -213,6 +225,10 @@ const props = defineProps({
     type: Object,
     default: () => null
   },
+  actionsDisabled: {
+    type: Boolean,
+    default: false
+  },
   // 是否显示调试信息 (已废弃，使用 infoStore.debugMode)
   debugMode: {
     type: Boolean,
@@ -220,7 +236,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['retry', 'retryStoppedMessage', 'openRefs', 'askFollowup'])
+const emit = defineEmits(['retry', 'retryStoppedMessage', 'openRefs', 'askFollowup', 'editResend'])
 
 // 图片全屏预览
 const imagePreview = ref({ visible: false, src: '', alt: '' })
@@ -383,12 +399,12 @@ const parsedData = computed(() => {
 
   &.human,
   &.sent {
-    max-width: 95%;
+    max-width: 78%;
     color: var(--gray-1000);
-    background-color: var(--main-50);
+    background-color: var(--gray-100);
     align-self: flex-end;
-    border-radius: 0.5rem;
-    padding: 0.5rem 1rem;
+    border-radius: 18px;
+    padding: 0.625rem 1rem;
   }
 
   &.assistant,
@@ -412,38 +428,6 @@ const parsedData = computed(() => {
   &.human.has-attachments,
   &.sent.has-attachments {
     margin-bottom: 0.375rem;
-  }
-
-  .message-copy-btn {
-    cursor: pointer;
-    color: var(--gray-400);
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    flex-shrink: 0;
-
-    &:hover {
-      color: var(--main-color);
-    }
-
-    &.is-copied {
-      color: var(--color-success-500);
-      opacity: 1;
-    }
-
-    &.human-copy {
-      position: absolute;
-      left: -28px;
-      bottom: 8px;
-    }
-  }
-
-  &:hover {
-    .message-copy-btn {
-      opacity: 1;
-    }
   }
 
   .message-text-system {
@@ -563,8 +547,52 @@ const parsedData = computed(() => {
   gap: 0.5rem;
   justify-content: flex-end;
   align-self: flex-end;
-  max-width: 95%;
-  margin-bottom: 0.8rem;
+  max-width: 78%;
+  margin-bottom: 0.25rem;
+}
+
+.human-message-actions {
+  display: flex;
+  align-self: flex-end;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-height: 28px;
+  margin: -0.35rem 0 0.5rem;
+}
+
+.message-action-btn {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  color: var(--gray-500);
+  background: transparent;
+  cursor: pointer;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    color: var(--gray-900);
+    background: var(--gray-100);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--main-200);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  &.is-copied {
+    color: var(--color-success-700);
+  }
 }
 
 .message-attachment-file {
@@ -731,6 +759,19 @@ const parsedData = computed(() => {
 
   &:hover {
     background: rgba(255, 255, 255, 0.28);
+  }
+}
+
+@media (max-width: 768px) {
+  .message-box.human,
+  .message-box.sent,
+  .human-message-attachments {
+    max-width: 92%;
+  }
+
+  .message-action-btn {
+    width: 36px;
+    height: 36px;
   }
 }
 </style>

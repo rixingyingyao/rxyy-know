@@ -65,7 +65,7 @@
         }"
       >
         <!-- Main Chat Area -->
-        <div class="chat-main" ref="chatMainRef">
+        <div class="chat-main" ref="chatMainRef" @scroll.passive="handleChatMainScroll">
           <div class="chat-box">
             <template v-for="row in conversationRows" :key="row.key">
               <div v-if="row.type === 'conversation'" class="conv-box">
@@ -80,7 +80,9 @@
                     :show-refs="showMsgRefs(displayItem.message, row.conv)"
                     :hide-tool-calls="true"
                     :mention="mentionConfig"
+                    :actions-disabled="isProcessing"
                     @retry="retryMessage(displayItem.message)"
+                    @edit-resend="handleEditAndResend"
                     @ask-followup="handleFollowupFromGraph"
                   >
                   </AgentMessageComponent>
@@ -96,14 +98,6 @@
                   :thread-id="currentChatId"
                   @saved="handleArtifactSaved"
                   @open-preview="openPanelPreview"
-                />
-                <!-- 显示对话最后一个消息使用的模型 -->
-                <RefsComponent
-                  v-if="shouldShowRefs(row.conv)"
-                  :message="getLastMessage(row.conv)"
-                  :show-refs="['model', 'copy', 'sources']"
-                  :is-latest-message="false"
-                  :sources="getConversationSources(row.conv)"
                 />
               </div>
               <div v-else class="chat-inline-notice">
@@ -123,7 +117,17 @@
               </div>
             </div>
           </div>
-          <div class="bottom" :class="{ 'start-screen': !conversations.length }">
+            <button
+              v-if="showScrollToBottom"
+              type="button"
+              class="scroll-to-bottom-btn"
+              title="回到底部"
+              aria-label="回到底部"
+              @click="handleScrollToBottom"
+            >
+              <ArrowDown :size="18" />
+            </button>
+            <div class="bottom" :class="{ 'start-screen': !conversations.length }">
             <!-- 人工审批弹窗 - 放在输入框上方 -->
             <HumanApprovalModal
               :visible="currentApprovalModalVisible"
@@ -145,6 +149,7 @@
               </div>
 
               <AgentInputArea
+                ref="agentInputRef"
                 v-model="userInput"
                 :is-loading="isProcessing"
                 :disabled="!currentAgent"
@@ -576,7 +581,7 @@ import {
   onDeactivated
 } from 'vue'
 import { message } from 'ant-design-vue'
-import { ChevronDown, FolderKanban, LayoutList, RefreshCw } from 'lucide-vue-next'
+import { ArrowDown, ChevronDown, FolderKanban, LayoutList, RefreshCw } from 'lucide-vue-next'
 import { formatFileSize } from '@/utils/file_utils'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
@@ -590,7 +595,6 @@ import {
 import AgentInputArea from '@/components/AgentInputArea.vue'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import AgentMessageComponent from '@/components/AgentMessageComponent.vue'
-import RefsComponent from '@/components/RefsComponent.vue'
 import ToolCallsGroupComponent from '@/components/ToolCallsGroupComponent.vue'
 import { handleChatError, handleValidationError } from '@/utils/errorHandler'
 import { ScrollController } from '@/utils/scrollController'
@@ -631,12 +635,12 @@ const agentStore = useAgentStore()
 const chatThreadsStore = useChatThreadsStore()
 const chatUIStore = useChatUIStore()
 const configStore = useConfigStore()
-const { agents, selectedAgentId, agentConfig, configurableItems, availableKnowledgeBases } =
-  storeToRefs(agentStore)
+const { agents, selectedAgentId, agentConfig, configurableItems } = storeToRefs(agentStore)
 const { threads, currentThreadId, currentThread } = storeToRefs(chatThreadsStore)
 
 // ==================== LOCAL CHAT & UI STATE ====================
 const userInput = ref('')
+const agentInputRef = ref(null)
 const sendCooldownActive = ref(false)
 let sendCooldownTimer = null
 // 预设的打招呼文本
@@ -1366,16 +1370,6 @@ const isConversationSettled = (conv) => {
   return !(isProcessing.value || isReplyLoading.value)
 }
 
-// 计算是否显示Refs组件的条件
-const shouldShowRefs = computed(() => {
-  return (conv) => {
-    if (!getLastMessage(conv) || conv.status === 'streaming' || shouldSuppressRefsForApproval()) {
-      return false
-    }
-    return isConversationSettled(conv)
-  }
-})
-
 const shouldShowArtifacts = computed(() => {
   return (conv) => {
     if (!currentArtifacts.value.length || conv.status === 'streaming') return false
@@ -1979,8 +1973,9 @@ const maybeInsertThreadConfigNotice = () => {
 }
 
 // ==================== SCROLL & RESIZE HANDLING ====================
-const scrollController = new ScrollController('.chat-main')
 const chatMainRef = ref(null)
+const showScrollToBottom = ref(false)
+const scrollController = new ScrollController(() => chatMainRef.value)
 let chatMainResizeObserver = null
 // 初始化延迟标志，避免首次挂载时 ResizeObserver 立即触发导致侧边栏意外关闭
 let isResizeObserverReady = false
@@ -2017,6 +2012,17 @@ const stopStreamingStateRefresh = () => {
     clearInterval(streamingStateRefreshTimer)
     streamingStateRefreshTimer = null
   }
+}
+
+const handleChatMainScroll = () => {
+  scrollController.handleScroll()
+  showScrollToBottom.value = !scrollController.isAtBottom()
+}
+
+const handleScrollToBottom = async () => {
+  scrollController.enableAutoScroll()
+  await scrollController.scrollToBottom(true)
+  showScrollToBottom.value = false
 }
 
 const startStreamingStateRefresh = () => {
@@ -2059,11 +2065,6 @@ onMounted(() => {
   }
 
   nextTick(() => {
-    const chatMainContainer = document.querySelector('.chat-main')
-    if (chatMainContainer) {
-      chatMainContainer.addEventListener('scroll', scrollController.handleScroll, { passive: true })
-    }
-
     startChatMainResizeObserver()
   })
 })
@@ -2446,6 +2447,44 @@ const handleFollowupFromGraph = async (text) => {
   await handleSendMessage()
 }
 
+const findConversationHumanMessage = (targetMessage) => {
+  const targetId = targetMessage?.id
+  const conversation = conversations.value.find((conv) =>
+    conv.messages?.some(
+      (item) => item === targetMessage || (targetId != null && item?.id === targetId)
+    )
+  )
+  return conversation?.messages?.find((item) => item.type === 'human') || null
+}
+
+const handleEditAndResend = async (humanMessage) => {
+  if (isProcessing.value) {
+    message.info('请先停止当前回答，再编辑消息')
+    return
+  }
+  const content = String(humanMessage?.content || '')
+  if (!content.trim()) return
+
+  userInput.value = content
+  await nextTick()
+  await handleScrollToBottom()
+  agentInputRef.value?.focus()
+  message.info('已载入原问题，修改后发送即可')
+}
+
+const retryMessage = async (assistantMessage) => {
+  if (isProcessing.value) return
+  const humanMessage = findConversationHumanMessage(assistantMessage)
+  const content = String(humanMessage?.content || '').trim()
+  if (!content) {
+    message.warning('没有找到可重新生成的用户问题')
+    return
+  }
+
+  userInput.value = content
+  await handleSendMessage()
+}
+
 const handleSendMessage = async ({ image } = {}) => {
   const text = userInput.value.trim()
   const imageContent = image?.imageContent || null
@@ -2792,14 +2831,6 @@ const isToolGroupActive = (conv, itemIndex, displayItems) => {
   )
 }
 
-const getLastMessage = (conv) => {
-  if (!conv?.messages?.length) return null
-  for (let i = conv.messages.length - 1; i >= 0; i--) {
-    if (conv.messages[i].type === 'ai') return conv.messages[i]
-  }
-  return null
-}
-
 const showMsgRefs = (msg, conv) => {
   if (shouldSuppressRefsForApproval()) {
     return false
@@ -2812,13 +2843,9 @@ const showMsgRefs = (msg, conv) => {
 
   // 只有真正完成的消息才显示 refs
   if (msg.isLast && msg.status === 'finished') {
-    return ['copy', 'sources']
+    return ['feedback', 'model', 'copy', 'regenerate', 'sources']
   }
   return false
-}
-
-const getConversationSources = (conv) => {
-  return MessageProcessor.extractSourcesFromConversation(conv, availableKnowledgeBases.value)
 }
 
 // ==================== LIFECYCLE & WATCHERS ====================
@@ -3334,7 +3361,7 @@ watch(currentChatId, (threadId, oldThreadId) => {
   max-width: 800px;
   margin: 0 auto;
   flex-grow: 1;
-  padding: 1rem var(--page-padding);
+  padding: 1.5rem var(--page-padding) 1rem;
   display: flex;
   flex-direction: column;
 }
@@ -3342,6 +3369,39 @@ watch(currentChatId, (threadId, oldThreadId) => {
 .conv-box {
   display: flex;
   flex-direction: column;
+}
+
+.scroll-to-bottom-btn {
+  position: sticky;
+  bottom: 108px;
+  z-index: 999;
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  margin: -48px auto 8px;
+  padding: 0;
+  border: 1px solid var(--gray-150);
+  border-radius: 50%;
+  color: var(--gray-700);
+  background: var(--gray-0);
+  box-shadow: 0 2px 8px var(--shadow-1);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--gray-1000);
+    background: var(--gray-50);
+    border-color: var(--gray-200);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--main-200);
+    outline-offset: 2px;
+  }
 }
 
 .chat-inline-notice {
@@ -3361,6 +3421,7 @@ watch(currentChatId, (threadId, oldThreadId) => {
   margin: 0 auto;
   padding: 4px 1rem 0 1rem;
   z-index: 1000;
+  background: var(--gray-0);
 
   .message-input-wrapper {
     width: 100%;
@@ -3492,6 +3553,18 @@ watch(currentChatId, (threadId, oldThreadId) => {
 }
 
 @media (max-width: 768px) {
+  .chat-box {
+    padding: 1rem 12px 0.75rem;
+  }
+
+  .bottom {
+    padding-inline: 12px;
+  }
+
+  .scroll-to-bottom-btn {
+    bottom: 112px;
+  }
+
   .chat.has-file-panel .chat-header {
     padding-right: 8px;
   }

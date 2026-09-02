@@ -7,10 +7,11 @@ from yuxi.utils.paths import (
 )
 
 PROMPT = f"""
-你是一个交互式智能体“语析“。
+你是当前会话的智能助手。
 
-专门用来回答用户的问题。请根据用户提供的信息，尽可能详细地回答问题。
-如果你不确定答案，可以说你不知道，但请尽量提供相关的信息或建议。请保持礼貌和专业。
+优先直接回答用户的问题，默认保持简洁；只有任务本身需要时才展开步骤、背景或长篇说明。
+不知道或无法验证的信息要明确说明，不要编造事实、来源、已执行动作或当前没有的能力。
+不要主动做固定自我介绍，也不要在用户没有询问时罗列能力清单。请保持礼貌和专业。
 
 <| 内部执行约束:重要 |>
 以下内容仅用于指导你的内部执行过程，不属于面向用户的基本设定。除非用户明确询问系统如何工作，
@@ -94,10 +95,82 @@ KB_FORCE_RETRIEVAL_PROMPT = """
 """
 
 
-def build_prompt_with_context(context):
+def _format_runtime_items(items: list[str]) -> str:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        value = str(item or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return "、".join(normalized) if normalized else "未启用"
+
+
+def _runtime_disclosure_prompt(context, model_spec: str, runtime_tools: list) -> str:
+    dependency_map = getattr(context, "_runtime_skill_dependency_map", {}) or {}
+    readable_skills = getattr(context, "_readable_skills", []) or []
+    base_tool_names = {
+        str(name).strip() for name in (getattr(context, "tools", None) or []) if str(name).strip()
+    }
+    gated_tool_names: set[str] = set()
+    for slug in readable_skills:
+        gated_tool_names.update((dependency_map.get(slug) or {}).get("tools", []))
+    gated_tool_names -= base_tool_names
+
+    tool_names = [
+        str(getattr(tool, "name", "") or "").strip()
+        for tool in runtime_tools
+        if str(getattr(tool, "name", "") or "").strip() not in gated_tool_names
+    ]
+
+    knowledge_names = []
+    for item in getattr(context, "_visible_knowledge_bases", []) or []:
+        if not isinstance(item, dict):
+            continue
+        kb_id = str(item.get("kb_id") or "").strip()
+        name = str(item.get("name") or kb_id).strip()
+        if name:
+            knowledge_names.append(f"{name}（{kb_id}）" if kb_id and kb_id != name else name)
+
+    skill_metadata = getattr(context, "_runtime_skill_metadata", {}) or {}
+    skill_names = []
+    for slug in getattr(context, "_prompt_skills", []) or []:
+        normalized_slug = str(slug or "").strip()
+        if not normalized_slug:
+            continue
+        name = str((skill_metadata.get(normalized_slug) or {}).get("name") or normalized_slug).strip()
+        skill_names.append(f"{name}（{normalized_slug}）" if name != normalized_slug else normalized_slug)
+
+    subagent_names = [str(slug or "").strip() for slug in getattr(context, "subagents", []) or []]
+    file_capability = (
+        "已启用（FilesystemMiddleware 提供 ls / read_file / write_file / edit_file，"
+        "与上方「直接工具」列表独立；用户未勾选任何工具时文件能力仍然可用。"
+        "仅在用户要求时读取附件或创建、编辑交付文件）"
+    )
+
+    return f"""
+<| 运行时事实：回答身份与能力问题时必须严格遵守 |>
+- 当前驱动模型：{model_spec}
+- 直接工具：{_format_runtime_items(tool_names)}
+- 知识库：{_format_runtime_items(knowledge_names)}
+- Skills：{_format_runtime_items(skill_names)}
+- 子智能体：{_format_runtime_items(subagent_names)}
+- 会话工作区文件能力：{file_capability}
+
+当用户询问“你是什么模型”或同义问题时，直接给出上述完整模型标识；不要用智能体名称、产品名称或
+“不便透露”等话术代替。名称和角色设定不是模型身份。
+当用户询问能力时，只能依据上述运行时事实回答。未列出的工具、知识库、Skills、MCP 或子智能体一律
+视为当前未启用；不要根据平台可能支持什么来推断本次会话已经具备什么。实际调用失败时也要如实说明。
+<| 运行时事实结束 |>
+""".strip()
+
+
+def build_prompt_with_context(context, *, model_spec: str, runtime_tools: list):
     current_date = f"当前日期：{shanghai_now().strftime('%Y-%m-%d')}"
     system_prompt = f"{current_date}\n\n{PROMPT.strip()}\n\n{context.system_prompt or ''}"
     # None 表示"默认全部可访问"，保持上游行为不注入；仅显式配置知识库列表时强制先检索
     if getattr(context, "knowledges", None):
         system_prompt = f"{system_prompt}\n\n{KB_FORCE_RETRIEVAL_PROMPT.strip()}"
+    system_prompt = f"{system_prompt}\n\n{_runtime_disclosure_prompt(context, model_spec, runtime_tools)}"
     return system_prompt.strip()
