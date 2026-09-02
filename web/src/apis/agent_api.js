@@ -261,6 +261,14 @@ export const threadApi = {
   deleteThread: (threadId) => apiDelete(`/api/chat/thread/${threadId}`),
 
   /**
+   * 从指定消息分叉出新对话
+   * @param {string} threadId
+   * @param {number} messageId
+   */
+  branchThread: (threadId, messageId) =>
+    apiPost(`/api/chat/thread/${threadId}/branch`, { message_id: messageId }),
+
+  /**
    * 获取线程附件列表
    * @param {string} threadId - 对话线程ID
    * @returns {Promise}

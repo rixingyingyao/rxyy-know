@@ -13,6 +13,7 @@ from yuxi import config as conf
 from yuxi.models import select_model
 from yuxi.services.chat_service import get_agent_state_view
 from yuxi.services.conversation_service import (
+    branch_thread_view,
     confirm_tmp_thread_attachments_view,
     create_thread_view,
     delete_thread_attachment_view,
@@ -121,6 +122,10 @@ class ThreadCreate(BaseModel):
     title: str | None = None
     agent_id: str
     metadata: dict | None = None
+
+
+class ThreadBranchRequest(BaseModel):
+    message_id: int
 
 
 class ThreadResponse(BaseModel):
@@ -277,6 +282,22 @@ async def create_thread(
         agent_slug=thread.agent_id,
         title=thread.title,
         metadata=thread.metadata,
+        db=db,
+        current_uid=str(current_user.uid),
+    )
+
+
+@chat.post("/thread/{thread_id}/branch", response_model=ThreadResponse)
+async def branch_thread(
+    thread_id: str,
+    body: ThreadBranchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_required_user),
+):
+    """从指定消息分叉出新对话，原线程保持不变。"""
+    return await branch_thread_view(
+        thread_id=thread_id,
+        message_id=body.message_id,
         db=db,
         current_uid=str(current_user.uid),
     )

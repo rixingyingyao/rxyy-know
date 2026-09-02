@@ -54,6 +54,15 @@
         title="重新生成"
         ><RotateCcw size="16" />
       </button>
+      <button
+        v-if="showKey('branch')"
+        type="button"
+        class="item btn"
+        @click="branchMessage()"
+        title="在新对话中分支"
+      >
+        <GitBranch size="16" />
+      </button>
 
       <!-- 来源按钮 - 使用 flex-grow 占据剩余空间并右对齐 -->
       <div v-if="hasSources && showKey('sources')" class="sources-spacer"></div>
@@ -114,6 +123,7 @@ import {
   Copy,
   Check,
   RotateCcw,
+  GitBranch,
   BookOpen,
   ChevronDown
 } from 'lucide-vue-next'
@@ -121,7 +131,7 @@ import { agentApi } from '@/apis'
 import KnowledgeSourceSection from '@/components/KnowledgeSourceSection.vue'
 import WebSearchSourceSection from '@/components/WebSearchSourceSection.vue'
 
-const emit = defineEmits(['retry', 'openRefs'])
+const emit = defineEmits(['retry', 'openRefs', 'branch'])
 const props = defineProps({
   message: Object,
   showRefs: {
@@ -241,6 +251,10 @@ const showRefs = computed(() => {
 // 添加重新生成方法
 const regenerateMessage = () => {
   emit('retry')
+}
+
+const branchMessage = () => {
+  emit('branch', msg.value)
 }
 
 // 获取模型名称

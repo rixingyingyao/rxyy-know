@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.utils.auth_middleware import get_current_user, get_db, get_required_user
-from yuxi.config import UserConfig, UserConfigSchema
+from yuxi.config import UserConfig, UserConfigSchema, UserConfigUpdate
 from yuxi.storage.minio import upload_image_to_minio
 from yuxi.storage.postgres.models_business import APIKey, AgentEnv, User
 from yuxi.utils.auth_utils import AuthUtils
@@ -86,11 +86,16 @@ async def get_user_config(
 
 @user_router.put("/config", response_model=dict)
 async def update_user_config(
-    data: UserConfigSchema,
+    data: UserConfigUpdate,
     current_user: User = Depends(get_logged_in_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user_config = await UserConfig(uid=current_user.uid, schema=data).save(db)
+    current = await UserConfig.load(db, current_user.uid)
+    schema = UserConfigSchema(
+        enable_memory=current.schema.enable_memory if data.enable_memory is None else data.enable_memory,
+        memory_text=current.schema.memory_text if data.memory_text is None else data.memory_text,
+    )
+    user_config = await UserConfig(uid=current_user.uid, schema=schema).save(db)
     return user_config.dump_config()
 
 

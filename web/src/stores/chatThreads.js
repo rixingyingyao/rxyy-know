@@ -88,6 +88,21 @@ export const useChatThreadsStore = defineStore('chatThreads', () => {
     }
   }
 
+  const branchThread = async (threadId, messageId) => {
+    if (!threadId || messageId == null) return null
+    try {
+      const thread = await threadApi.branchThread(threadId, messageId)
+      if (thread) {
+        threads.value = [thread, ...threads.value.filter((item) => item.id !== thread.id)]
+      }
+      return thread
+    } catch (error) {
+      console.error('Failed to branch thread:', error)
+      handleChatError(error, 'create')
+      throw error
+    }
+  }
+
   const deleteThread = async (threadId) => {
     if (!threadId) return
 
@@ -154,6 +169,7 @@ export const useChatThreadsStore = defineStore('chatThreads', () => {
     loadThreads,
     loadMoreThreads,
     createThread,
+    branchThread,
     deleteThread,
     updateThread
   }

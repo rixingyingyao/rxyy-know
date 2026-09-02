@@ -169,5 +169,12 @@ def build_prompt_with_context(context, *, model_spec: str, runtime_tools: list):
     # None 表示"默认全部可访问"，保持上游行为不注入；仅显式配置知识库列表时强制先检索
     if getattr(context, "knowledges", None):
         system_prompt = f"{system_prompt}\n\n{KB_FORCE_RETRIEVAL_PROMPT.strip()}"
+    memory_text = (getattr(context, "_user_memory_text", None) or "").strip()
+    if getattr(context, "_enable_memory", False) and memory_text:
+        system_prompt = f"{system_prompt}\n\n<| 用户记忆 |>\n{memory_text}\n<| 用户记忆结束 |>"
+        system_prompt = (
+            f"{system_prompt}\n用户记忆来自设置页，跨对话有效。需要更新时请提示用户去设置里改，"
+            "不要把记忆内容当成当前问题的证据来源。"
+        )
     system_prompt = f"{system_prompt}\n\n{_runtime_disclosure_prompt(context, model_spec, runtime_tools)}"
     return system_prompt.strip()

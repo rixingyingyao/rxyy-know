@@ -163,6 +163,7 @@ class UserConfig(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     uid = Column(String, ForeignKey("users.uid"), nullable=False, unique=True, index=True)
     enable_memory = Column(Boolean, nullable=False, default=False)
+    memory_text = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, default=utc_now_naive)
     updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
@@ -172,6 +173,7 @@ class UserConfig(Base):
         return {
             "uid": self.uid,
             "enable_memory": bool(self.enable_memory),
+            "memory_text": self.memory_text or "",
             "created_at": format_utc_datetime(self.created_at),
             "updated_at": format_utc_datetime(self.updated_at),
         }

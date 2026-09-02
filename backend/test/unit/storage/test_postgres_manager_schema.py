@@ -112,6 +112,11 @@ async def test_ensure_business_schema_creates_user_config_table():
 
     assert "CREATE TABLE IF NOT EXISTS user_config" in statements
     assert "enable_memory BOOLEAN NOT NULL DEFAULT FALSE" in statements
+    assert "memory_text TEXT NOT NULL DEFAULT ''" in statements
+    assert (
+        "ALTER TABLE IF EXISTS user_config ADD COLUMN IF NOT EXISTS memory_text TEXT NOT NULL DEFAULT ''"
+        in statements
+    )
 
 
 @pytest.mark.asyncio

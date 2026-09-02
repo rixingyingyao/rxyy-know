@@ -139,3 +139,25 @@ def test_empty_system_prompt_falls_back_to_default_persona():
 
     assert DEFAULT_CHAT_PERSONA.splitlines()[0] in prompt
     assert "<| 内部执行约束:重要 |>" in prompt
+
+
+def test_enabled_memory_is_injected_into_system_prompt():
+    prompt = build_prompt_with_context(
+        _context(_enable_memory=True, _user_memory_text="回复用简体中文。"),
+        model_spec="alibaba:qwen3.7-plus",
+        runtime_tools=[],
+    )
+
+    assert "<| 用户记忆 |>" in prompt
+    assert "回复用简体中文。" in prompt
+
+
+def test_disabled_memory_is_not_injected_into_system_prompt():
+    prompt = build_prompt_with_context(
+        _context(_enable_memory=False, _user_memory_text="不该出现的记忆"),
+        model_spec="alibaba:qwen3.7-plus",
+        runtime_tools=[],
+    )
+
+    assert "不该出现的记忆" not in prompt
+    assert "<| 用户记忆 |>" not in prompt

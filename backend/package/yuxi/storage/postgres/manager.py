@@ -405,6 +405,7 @@ class PostgresManager(metaclass=SingletonMeta):
                 id SERIAL PRIMARY KEY,
                 uid VARCHAR NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
                 enable_memory BOOLEAN NOT NULL DEFAULT FALSE,
+                memory_text TEXT NOT NULL DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
                 CONSTRAINT uq_user_config_uid UNIQUE (uid)
@@ -433,6 +434,7 @@ class PostgresManager(metaclass=SingletonMeta):
             "ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS share_config JSONB NOT NULL DEFAULT '{}'::jsonb",
             "ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS is_subagent BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE IF EXISTS user_config ADD COLUMN IF NOT EXISTS enable_memory BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE IF EXISTS user_config ADD COLUMN IF NOT EXISTS memory_text TEXT NOT NULL DEFAULT ''",
             """
             UPDATE cli_auth_sessions
             SET api_key_id = NULL

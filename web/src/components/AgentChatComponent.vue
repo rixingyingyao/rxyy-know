@@ -83,6 +83,7 @@
                     :actions-disabled="isProcessing"
                     @retry="retryMessage(displayItem.message)"
                     @edit-resend="handleEditAndResend"
+                    @branch="handleBranch"
                     @ask-followup="handleFollowupFromGraph"
                   >
                   </AgentMessageComponent>
@@ -2472,6 +2473,27 @@ const handleEditAndResend = async (humanMessage) => {
   message.info('已载入原问题，修改后发送即可')
 }
 
+const handleBranch = async (sourceMessage) => {
+  if (isProcessing.value) {
+    message.info('请先停止当前回答，再分支对话')
+    return
+  }
+  const messageId = sourceMessage?.id
+  const threadId = currentChatId.value
+  if (!threadId || messageId == null) {
+    message.warning('这条消息还不能分支')
+    return
+  }
+  try {
+    const thread = await chatThreadsStore.branchThread(threadId, messageId)
+    if (!thread?.id) return
+    await selectChat(thread.id)
+    message.success('已在新对话中分支，原对话保留')
+  } catch (error) {
+    message.error(error?.message || '分支对话失败')
+  }
+}
+
 const retryMessage = async (assistantMessage) => {
   if (isProcessing.value) return
   const humanMessage = findConversationHumanMessage(assistantMessage)
@@ -2844,7 +2866,7 @@ const showMsgRefs = (msg, conv) => {
   // 收尾后的最后一条 AI 消息展示操作栏。历史转换只把 isLast 写在消息上，
   // status=finished 写在 conv 上，不能再要求 msg.status === 'finished'。
   if (msg.isLast && (msg.type === 'ai' || msg.status === 'finished')) {
-    return ['feedback', 'model', 'copy', 'regenerate', 'sources']
+    return ['feedback', 'model', 'copy', 'regenerate', 'branch', 'sources']
   }
   return false
 }

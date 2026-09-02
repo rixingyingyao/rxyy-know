@@ -549,6 +549,8 @@ async def prepare_agent_runtime_context(
             setattr(context, "_readable_skills", [])
             setattr(context, "_runtime_skill_metadata", {})
             setattr(context, "_runtime_skill_dependency_map", {})
+            setattr(context, "_enable_memory", False)
+            setattr(context, "_user_memory_text", "")
             return context
 
         raw_resources = {
@@ -573,5 +575,15 @@ async def prepare_agent_runtime_context(
         setattr(context, "_readable_skills", skill_scope["readable_skills"])
         setattr(context, "_runtime_skill_metadata", skill_scope["runtime_skill_metadata"])
         setattr(context, "_runtime_skill_dependency_map", skill_scope["runtime_skill_dependency_map"])
+        from yuxi.config import UserConfig
+
+        user_config = await UserConfig.load(db, uid)
+        enable_memory = bool(user_config.schema.enable_memory)
+        setattr(context, "_enable_memory", enable_memory)
+        setattr(
+            context,
+            "_user_memory_text",
+            (user_config.schema.memory_text or "").strip() if enable_memory else "",
+        )
 
     return context

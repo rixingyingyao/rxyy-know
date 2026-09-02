@@ -4,7 +4,7 @@
       <div class="header-content">
         <div class="section-title">用户配置(Beta)</div>
         <p class="section-description">
-          配置当前用户的专属设置。当前为测试预览版，暂未引入新的特性，仅作技术能力拓展。
+          配置当前用户的专属设置。Memory 开启后会写入智能体系统提示，跨对话记住你填的偏好和事实。
         </p>
       </div>
       <div class="header-actions">
@@ -24,11 +24,29 @@
           <div class="config-meta">
             <div class="config-title-line">
               <span class="config-title">是否启用 Memory</span>
-              <span class="reserved-badge">预留开关</span>
             </div>
-            <p class="config-description">当前仅保存配置值，暂不接入智能体运行逻辑。</p>
+            <p class="config-description">
+              开启后，下方记忆会进入每次对话的系统提示。关闭则不注入，已保存的记忆仍保留。
+            </p>
           </div>
           <a-switch :checked="draftEnableMemory" @change="draftEnableMemory = Boolean($event)" />
+        </div>
+        <div v-if="draftEnableMemory" class="config-row config-row-block">
+          <div class="config-meta">
+            <div class="config-title-line">
+              <span class="config-title">记忆内容</span>
+            </div>
+            <p class="config-description">
+              写你希望智能体跨对话记住的偏好、身份和长期事实。不要放密码或密钥。
+            </p>
+          </div>
+          <a-textarea
+            v-model:value="draftMemoryText"
+            :rows="6"
+            :maxlength="4000"
+            show-count
+            placeholder="例如：回复用简体中文；我做知识库产品，默认先给可执行步骤。"
+          />
         </div>
       </div>
     </a-spin>
@@ -45,13 +63,21 @@ const loading = ref(false)
 const saving = ref(false)
 const draftEnableMemory = ref(false)
 const savedEnableMemory = ref(false)
+const draftMemoryText = ref('')
+const savedMemoryText = ref('')
 
-const hasUnsavedChanges = computed(() => draftEnableMemory.value !== savedEnableMemory.value)
+const hasUnsavedChanges = computed(
+  () =>
+    draftEnableMemory.value !== savedEnableMemory.value ||
+    draftMemoryText.value !== savedMemoryText.value
+)
 const saveButtonText = computed(() => (hasUnsavedChanges.value ? '保存（有修改）' : '保存'))
 
 const applyResponse = (res) => {
   draftEnableMemory.value = res.enable_memory
   savedEnableMemory.value = res.enable_memory
+  draftMemoryText.value = res.memory_text || ''
+  savedMemoryText.value = res.memory_text || ''
 }
 
 const loadUserConfig = async () => {
@@ -74,7 +100,10 @@ const saveUserConfig = async () => {
 
   saving.value = true
   try {
-    const res = await userConfigApi.update({ enable_memory: draftEnableMemory.value })
+    const res = await userConfigApi.update({
+      enable_memory: draftEnableMemory.value,
+      memory_text: draftMemoryText.value
+    })
     applyResponse(res)
     message.success('用户配置已保存')
   } catch (error) {
@@ -132,6 +161,11 @@ onMounted(loadUserConfig)
       align-items: flex-start;
       flex-direction: column;
     }
+  }
+
+  .config-row-block {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .config-meta {

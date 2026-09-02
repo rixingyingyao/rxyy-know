@@ -42,6 +42,7 @@ async def test_user_config_load_returns_defaults_without_creating_row(session):
 
     assert dumped["uid"] == user.uid
     assert dumped["enable_memory"] is False
+    assert dumped["memory_text"] == ""
 
     result = await db.execute(select(UserConfigRecord).filter(UserConfigRecord.uid == user.uid))
     assert result.scalar_one_or_none() is None
@@ -50,10 +51,16 @@ async def test_user_config_load_returns_defaults_without_creating_row(session):
 async def test_user_config_save_persists_user_specific_values(session):
     db, user = session
 
-    saved = await UserConfig(uid=user.uid, schema=UserConfigSchema(enable_memory=True)).save(db)
+    saved = await UserConfig(
+        uid=user.uid,
+        schema=UserConfigSchema(enable_memory=True, memory_text="回复用简体中文"),
+    ).save(db)
     loaded = await UserConfig.load(db, user.uid)
 
     assert saved.dump_config()["enable_memory"] is True
     assert loaded.dump_config()["enable_memory"] is True
+    assert loaded.dump_config()["memory_text"] == "回复用简体中文"
     result = await db.execute(select(UserConfigRecord).filter(UserConfigRecord.uid == user.uid))
-    assert result.scalar_one().enable_memory is True
+    record = result.scalar_one()
+    assert record.enable_memory is True
+    assert record.memory_text == "回复用简体中文"

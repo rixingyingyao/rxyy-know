@@ -17,6 +17,16 @@ class UserConfigSchema(BaseModel):
     """用户专属配置 schema。"""
 
     enable_memory: bool = Field(default=False, description="是否启用 Memory")
+    memory_text: str = Field(default="", description="跨对话记住的用户偏好与长期事实")
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UserConfigUpdate(BaseModel):
+    """部分更新；未传的字段保持原值，避免只改开关时把记忆清空。"""
+
+    enable_memory: bool | None = None
+    memory_text: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -37,7 +47,10 @@ class UserConfig:
             return cls(uid=uid)
         return cls(
             uid=uid,
-            schema=UserConfigSchema(enable_memory=bool(record.enable_memory)),
+            schema=UserConfigSchema(
+                enable_memory=bool(record.enable_memory),
+                memory_text=record.memory_text or "",
+            ),
             updated_at=record.updated_at,
         )
 
@@ -46,13 +59,18 @@ class UserConfig:
         result = await db.execute(
             update(UserConfigRecord)
             .where(UserConfigRecord.uid == self.uid)
-            .values(enable_memory=self.schema.enable_memory, updated_at=now)
+            .values(
+                enable_memory=self.schema.enable_memory,
+                memory_text=self.schema.memory_text,
+                updated_at=now,
+            )
         )
         if result.rowcount == 0:
             db.add(
                 UserConfigRecord(
                     uid=self.uid,
                     enable_memory=self.schema.enable_memory,
+                    memory_text=self.schema.memory_text,
                     created_at=now,
                     updated_at=now,
                 )
@@ -65,7 +83,11 @@ class UserConfig:
             retry_result = await db.execute(
                 update(UserConfigRecord)
                 .where(UserConfigRecord.uid == self.uid)
-                .values(enable_memory=self.schema.enable_memory, updated_at=now)
+                .values(
+                    enable_memory=self.schema.enable_memory,
+                    memory_text=self.schema.memory_text,
+                    updated_at=now,
+                )
             )
             if retry_result.rowcount == 0:
                 raise
@@ -76,5 +98,6 @@ class UserConfig:
         return {
             "uid": self.uid,
             "enable_memory": self.schema.enable_memory,
+            "memory_text": self.schema.memory_text,
             "updated_at": format_utc_datetime(self.updated_at),
         }

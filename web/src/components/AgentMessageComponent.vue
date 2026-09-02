@@ -98,6 +98,7 @@
           :is-latest-message="isLatestMessage"
           :sources="messageSources"
           @retry="emit('retry')"
+          @branch="emit('branch', message)"
           @openRefs="emit('openRefs', $event)"
         />
       </div>
@@ -144,6 +145,15 @@
     <button
       type="button"
       class="message-action-btn"
+      title="在新对话中分支"
+      :disabled="actionsDisabled || message.id == null"
+      @click="emit('branch', message)"
+    >
+      <GitBranch :size="15" />
+    </button>
+    <button
+      type="button"
+      class="message-action-btn"
       :class="{ 'is-copied': isCopied }"
       :title="isCopied ? '已复制' : '复制'"
       @click="copyToClipboard(message.content)"
@@ -171,7 +181,7 @@
 import { computed, ref, onUnmounted } from 'vue'
 import { CaretRightOutlined } from '@ant-design/icons-vue'
 import RefsComponent from '@/components/RefsComponent.vue'
-import { Copy, Check, Pencil, X } from 'lucide-vue-next'
+import { Copy, Check, Pencil, GitBranch, X } from 'lucide-vue-next'
 import ToolCallsGroupComponent from '@/components/ToolCallsGroupComponent.vue'
 import GraphVizRenderer from '@/components/GraphVizRenderer.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
@@ -230,7 +240,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['retry', 'retryStoppedMessage', 'openRefs', 'askFollowup', 'editResend'])
+const emit = defineEmits(['retry', 'retryStoppedMessage', 'openRefs', 'askFollowup', 'editResend', 'branch'])
 
 // 图片全屏预览
 const imagePreview = ref({ visible: false, src: '', alt: '' })

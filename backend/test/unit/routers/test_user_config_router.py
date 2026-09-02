@@ -5,7 +5,7 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from server.routers.user_router import get_logged_in_user, get_user_config, update_user_config
-from yuxi.config import UserConfigSchema
+from yuxi.config import UserConfigUpdate
 from yuxi.storage.postgres.models_business import Base, Department, User
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.unit]
@@ -45,7 +45,7 @@ async def test_user_config_routes_scope_to_current_user(session):
     db, user_a, user_b = session
 
     own_config = await update_user_config(
-        UserConfigSchema(enable_memory=True),
+        UserConfigUpdate(enable_memory=True),
         current_user=user_a,
         db=db,
     )
@@ -53,6 +53,24 @@ async def test_user_config_routes_scope_to_current_user(session):
 
     assert own_config["enable_memory"] is True
     assert other_config["enable_memory"] is False
+
+
+async def test_user_config_partial_update_keeps_memory_text(session):
+    db, user_a, _user_b = session
+
+    await update_user_config(
+        UserConfigUpdate(enable_memory=True, memory_text="回复用简体中文"),
+        current_user=user_a,
+        db=db,
+    )
+    updated = await update_user_config(
+        UserConfigUpdate(enable_memory=False),
+        current_user=user_a,
+        db=db,
+    )
+
+    assert updated["enable_memory"] is False
+    assert updated["memory_text"] == "回复用简体中文"
 
 
 async def test_user_config_allows_logged_in_user_without_department():

@@ -439,6 +439,141 @@ async def create_thread_view(
     }
 
 
+def _branch_title(title: str | None) -> str:
+    base = (title or "对话").strip() or "对话"
+    suffix = "（分支）"
+    if suffix not in base:
+        base = f"{base}{suffix}"
+    return base[:255]
+
+
+def _thread_payload(conversation) -> dict:
+    return {
+        "id": conversation.thread_id,
+        "uid": conversation.uid,
+        "agent_id": conversation.agent_id,
+        "title": conversation.title,
+        "is_pinned": bool(conversation.is_pinned),
+        "created_at": conversation.created_at.isoformat(),
+        "updated_at": conversation.updated_at.isoformat(),
+        "metadata": conversation.extra_metadata or {},
+    }
+
+
+async def _copy_messages_through(
+    conv_repo: ConversationRepository,
+    *,
+    source_messages: list,
+    cutoff_message_id: int,
+    target_thread_id: str,
+) -> list:
+    copied = []
+    for message in sorted(
+        (item for item in source_messages if item.id <= cutoff_message_id),
+        key=lambda item: item.id,
+    ):
+        new_message = await conv_repo.add_message_by_thread_id(
+            target_thread_id,
+            role=message.role,
+            content=message.content or "",
+            message_type=message.message_type or "text",
+            extra_metadata=dict(message.extra_metadata or {}),
+            image_content=message.image_content,
+            delivery_status=message.delivery_status or "complete",
+        )
+        if new_message is None:
+            continue
+        for tool_call in message.tool_calls or []:
+            await conv_repo.add_tool_call(
+                message_id=new_message.id,
+                tool_name=tool_call.tool_name,
+                tool_input=tool_call.tool_input,
+                tool_output=tool_call.tool_output,
+                status=tool_call.status or "pending",
+                error_message=tool_call.error_message,
+            )
+        copied.append(new_message)
+    return copied
+
+
+async def _seed_branch_checkpoint(
+    *,
+    backend_id: str | None,
+    new_thread_id: str,
+    copied_messages: list,
+    current_uid: str,
+) -> None:
+    if not backend_id:
+        return
+    try:
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        agent = agent_manager.get_agent(backend_id)
+        if not agent:
+            return
+        graph = await agent.get_graph()
+        lc_messages = []
+        for message in copied_messages:
+            content = message.content or ""
+            if message.role in {"user", "human"}:
+                lc_messages.append(HumanMessage(content=content))
+            elif message.role in {"assistant", "ai"}:
+                lc_messages.append(AIMessage(content=content))
+        if not lc_messages:
+            return
+        await graph.aupdate_state(
+            config={"configurable": {"thread_id": new_thread_id, "uid": str(current_uid)}},
+            values={"messages": lc_messages},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Failed to seed branch checkpoint for thread {new_thread_id}: {exc}")
+
+
+async def branch_thread_view(
+    *,
+    thread_id: str,
+    message_id: int,
+    db: AsyncSession,
+    current_uid: str,
+) -> dict:
+    conv_repo = ConversationRepository(db)
+    conversation = await require_user_conversation(conv_repo, thread_id, str(current_uid))
+    messages = await conv_repo.get_messages_by_thread_id(thread_id)
+    cutoff = next((item for item in messages if item.id == int(message_id)), None)
+    if cutoff is None:
+        raise HTTPException(status_code=404, detail="消息不存在")
+
+    new_thread_id = str(uuid.uuid4())
+    source_metadata = dict(conversation.extra_metadata or {})
+    branch_metadata = {
+        **source_metadata,
+        "branched_from_thread_id": conversation.thread_id,
+        "branched_from_message_id": cutoff.id,
+    }
+    branched = await conv_repo.create_conversation(
+        uid=str(current_uid),
+        agent_id=conversation.agent_id,
+        title=_branch_title(conversation.title),
+        thread_id=new_thread_id,
+        metadata=branch_metadata,
+    )
+    copied = await _copy_messages_through(
+        conv_repo,
+        source_messages=messages,
+        cutoff_message_id=cutoff.id,
+        target_thread_id=new_thread_id,
+    )
+    agent_item = await AgentRepository(db).get_by_slug(conversation.agent_id)
+    backend_id = source_metadata.get("backend_id") or getattr(agent_item, "backend_id", None)
+    await _seed_branch_checkpoint(
+        backend_id=backend_id,
+        new_thread_id=new_thread_id,
+        copied_messages=copied,
+        current_uid=str(current_uid),
+    )
+    return _thread_payload(branched)
+
+
 async def list_threads_view(
     *,
     agent_slug: str | None,
