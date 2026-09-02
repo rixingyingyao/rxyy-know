@@ -91,13 +91,7 @@
         >
       </div>
 
-      <div
-        v-if="
-          (message.role == 'received' || message.role == 'assistant') &&
-          message.status == 'finished' &&
-          showRefs
-        "
-      >
+      <div v-if="showRefs && (message.type === 'ai' || message.role == 'received' || message.role == 'assistant')">
         <RefsComponent
           :message="message"
           :show-refs="showRefs"

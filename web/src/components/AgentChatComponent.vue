@@ -2841,8 +2841,9 @@ const showMsgRefs = (msg, conv) => {
     return false
   }
 
-  // 只有真正完成的消息才显示 refs
-  if (msg.isLast && msg.status === 'finished') {
+  // 收尾后的最后一条 AI 消息展示操作栏。历史转换只把 isLast 写在消息上，
+  // status=finished 写在 conv 上，不能再要求 msg.status === 'finished'。
+  if (msg.isLast && (msg.type === 'ai' || msg.status === 'finished')) {
     return ['feedback', 'model', 'copy', 'regenerate', 'sources']
   }
   return false
