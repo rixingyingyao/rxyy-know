@@ -7,12 +7,6 @@ from typing import Any, Literal
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from yuxi.agents.context import (
-    DEFAULT_CHAT_PERSONA,
-    DEFAULT_SUMMARY_THRESHOLD_K,
-    LEGACY_DEFAULT_SYSTEM_PROMPT,
-    LEGACY_SUMMARY_THRESHOLD_K,
-)
 from yuxi.storage.postgres.models_business import Agent, User
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.utils.share_config import SHARE_ACCESS_LEVELS, normalize_share_config
@@ -184,6 +178,15 @@ def _slugify(value: str | None) -> str:
 
 def _upgrade_default_chatbot_context(agent) -> bool:
     """把旧版英文人设 / 100K 摘要阈值迁到可编辑默认值。自定义提示词与非 100 的阈值不改。"""
+    # 不能在模块顶层 import yuxi.agents.context：会先执行 yuxi.agents.__init__，
+    # 再绕回本模块，触发 AgentRepository 循环导入。
+    from yuxi.agents.context import (
+        DEFAULT_CHAT_PERSONA,
+        DEFAULT_SUMMARY_THRESHOLD_K,
+        LEGACY_DEFAULT_SYSTEM_PROMPT,
+        LEGACY_SUMMARY_THRESHOLD_K,
+    )
+
     raw = getattr(agent, "config_json", None)
     if not isinstance(raw, dict):
         return False

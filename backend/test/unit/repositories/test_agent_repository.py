@@ -221,3 +221,9 @@ def test_shared_agent_is_accessible_but_not_manageable_for_normal_user():
 
     assert user_can_access_agent(user, agent) is True
     assert user_can_manage_agent(user, agent) is False
+
+
+def test_agent_invocation_service_import_does_not_cycle_through_agent_repository():
+    from yuxi.services.agent_invocation_service import AgentRepository as ImportedRepo
+
+    assert ImportedRepo is AgentRepository
