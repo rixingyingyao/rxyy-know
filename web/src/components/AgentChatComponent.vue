@@ -12,10 +12,10 @@
         <div class="header__left">
           <slot name="header-left"></slot>
           <div
-            v-if="currentThread?.title && currentThread.title !== '新的对话'"
+            v-if="currentThreadTitle"
             class="conversation-title"
           >
-            {{ currentThread.title }}
+            {{ currentThreadTitle }}
           </div>
         </div>
         <div class="header__right">
@@ -138,6 +138,9 @@
             />
 
             <div class="message-input-wrapper">
+              <div v-if="isTemporarySession" class="temp-chat-banner">
+                临时对话：不会出现在最近列表，也不使用 Memory。
+              </div>
               <!-- 加载状态：加载消息 -->
               <div v-if="isLoadingMessages" class="chat-loading">
                 <div class="loading-spinner"></div>
@@ -164,6 +167,17 @@
                 @remove-attachment="handleAttachmentRemove"
               >
                 <template #actions-left-extra>
+                  <button
+                    v-if="!currentChatId"
+                    type="button"
+                    class="temp-chat-toggle"
+                    :class="{ active: isTemporaryMode }"
+                    :aria-pressed="isTemporaryMode"
+                    title="开启后新对话不进最近列表，也不注入 Memory"
+                    @click="isTemporaryMode = !isTemporaryMode"
+                  >
+                    临时会话
+                  </button>
                   <slot name="input-actions-left" :has-active-thread="!!currentChatId"></slot>
                 </template>
                 <template #actions-right-extra>
@@ -641,6 +655,21 @@ const { threads, currentThreadId, currentThread } = storeToRefs(chatThreadsStore
 
 // ==================== LOCAL CHAT & UI STATE ====================
 const userInput = ref('')
+const isTemporaryMode = ref(false)
+const pendingEditResend = ref(null)
+const isTemporarySession = computed(
+  () =>
+    currentThread.value?.metadata?.source === 'temporary' ||
+    (!currentThreadId.value && isTemporaryMode.value)
+)
+const currentThreadTitle = computed(() => {
+  const title = currentThread.value?.title
+  if (currentThread.value?.metadata?.source === 'temporary') {
+    return title && title !== '新的对话' ? title : '临时对话'
+  }
+  if (title && title !== '新的对话') return title
+  return ''
+})
 const agentInputRef = ref(null)
 const sendCooldownActive = ref(false)
 let sendCooldownTimer = null
@@ -2106,11 +2135,11 @@ const fetchThreads = async (agentId = null) => {
 }
 
 // 创建新线程
-const createThread = async (agentId, title = '新的对话') => {
+const createThread = async (agentId, title = '新的对话', metadata) => {
   if (!agentId) return null
 
   try {
-    const thread = await chatThreadsStore.createThread(agentId, title)
+    const thread = await chatThreadsStore.createThread(agentId, title, metadata)
     if (thread) {
       threadMessages.value[thread.id] = []
       threadFilesMap.value[thread.id] = []
@@ -2209,7 +2238,9 @@ const fetchAgentState = async (agentId, threadId) => {
 const ensureActiveThread = async (title = '新的对话') => {
   if (currentChatId.value) return currentChatId.value
   try {
-    const newThread = await createThread(currentAgentId.value, title || '新的对话')
+    const metadata = isTemporaryMode.value ? { source: 'temporary' } : undefined
+    const threadTitle = isTemporaryMode.value ? title || '临时对话' : title || '新的对话'
+    const newThread = await createThread(currentAgentId.value, threadTitle, metadata)
     if (newThread) {
       setCurrentThreadId(newThread.id)
       return newThread.id
@@ -2345,6 +2376,8 @@ const getFirstNonPinnedChat = (chatList) => {
 }
 
 const selectChat = async (chatId) => {
+  pendingEditResend.value = null
+  isTemporaryMode.value = false
   const targetChat = threads.value.find((chat) => chat.id === chatId) || null
   const targetAgentId = targetChat?.agent_id || currentAgentId.value
   const previousThreadId = chatState.currentThreadId
@@ -2465,12 +2498,20 @@ const handleEditAndResend = async (humanMessage) => {
   }
   const content = String(humanMessage?.content || '')
   if (!content.trim()) return
+  if (humanMessage?.id == null || !currentChatId.value) {
+    message.warning('这条消息还不能分叉重发')
+    return
+  }
 
+  pendingEditResend.value = {
+    threadId: currentChatId.value,
+    messageId: humanMessage.id
+  }
   userInput.value = content
   await nextTick()
   await handleScrollToBottom()
   agentInputRef.value?.focus()
-  message.info('已载入原问题，修改后发送即可')
+  message.info('已载入原问题。发送后会在新对话中重发，原对话保留')
 }
 
 const handleBranch = async (sourceMessage) => {
@@ -2521,6 +2562,26 @@ const handleSendMessage = async ({ image } = {}) => {
 
   // 发送后进入短暂冷却，防止连续触发停止
   startSendCooldown()
+
+  if (pendingEditResend.value) {
+    const pending = pendingEditResend.value
+    pendingEditResend.value = null
+    try {
+      const thread = await chatThreadsStore.branchThread(pending.threadId, pending.messageId, {
+        includeCutoff: false
+      })
+      if (!thread?.id) {
+        pendingEditResend.value = pending
+        message.error('分叉对话失败，请重试')
+        return
+      }
+      await selectChat(thread.id)
+    } catch (error) {
+      pendingEditResend.value = pending
+      message.error(error?.message || '分叉对话失败')
+      return
+    }
+  }
 
   let threadId = currentChatId.value
   if (!threadId) {
@@ -3238,6 +3299,34 @@ watch(currentChatId, (threadId, oldThreadId) => {
     color: var(--gray-1000);
     margin: 0;
   }
+}
+
+.temp-chat-banner {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--color-warning-10, #fff7e6);
+  color: var(--gray-700);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.temp-chat-toggle {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--gray-200);
+  border-radius: 999px;
+  background: var(--gray-0);
+  color: var(--gray-700);
+  font-size: 12px;
+  line-height: 26px;
+  cursor: pointer;
+}
+
+.temp-chat-toggle.active {
+  border-color: var(--main-200, #91caff);
+  background: var(--main-30, #e6f4ff);
+  color: var(--main-700, #0958d9);
 }
 
 .agent-segment-wrapper {

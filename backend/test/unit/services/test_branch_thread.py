@@ -63,3 +63,37 @@ async def test_branch_thread_copies_messages_through_cutoff_and_keeps_source(ses
     ]
     assert [item.content for item in branch_messages] == ["你是什么模型？", "alibaba:qwen3.7-plus"]
     assert first.id not in {item.id for item in branch_messages}
+
+
+async def test_branch_thread_can_exclude_cutoff_for_edit_resend(session, monkeypatch):
+    monkeypatch.setattr(
+        "yuxi.services.conversation_service._seed_branch_checkpoint",
+        AsyncMock(),
+    )
+    db = session
+    repo = ConversationRepository(db)
+    source = await repo.create_conversation(
+        uid="u1",
+        agent_id="default-chatbot",
+        title="编辑重发",
+        thread_id="edit-source",
+        metadata={"backend_id": "ChatbotAgent"},
+    )
+    first = await repo.add_message(source.id, role="user", content="旧问题")
+    await repo.add_message(source.id, role="assistant", content="旧回答")
+    third = await repo.add_message(source.id, role="user", content="要改的问题")
+
+    branched = await branch_thread_view(
+        thread_id="edit-source",
+        message_id=third.id,
+        db=db,
+        current_uid="u1",
+        include_cutoff=False,
+    )
+
+    branch_messages = await repo.get_messages_by_thread_id(branched["id"])
+    source_messages = await repo.get_messages_by_thread_id("edit-source")
+    assert [item.content for item in source_messages] == ["旧问题", "旧回答", "要改的问题"]
+    assert [item.content for item in branch_messages] == ["旧问题", "旧回答"]
+    assert first.id not in {item.id for item in branch_messages}
+    assert third.id not in {item.id for item in branch_messages}

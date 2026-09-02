@@ -576,9 +576,21 @@ async def prepare_agent_runtime_context(
         setattr(context, "_runtime_skill_metadata", skill_scope["runtime_skill_metadata"])
         setattr(context, "_runtime_skill_dependency_map", skill_scope["runtime_skill_dependency_map"])
         from yuxi.config import UserConfig
+        from yuxi.repositories.conversation_repository import (
+            TEMPORARY_CONVERSATION_SOURCE,
+            ConversationRepository,
+        )
 
+        thread_id = str(getattr(context, "thread_id", "") or "").strip()
+        conversation = (
+            await ConversationRepository(db).get_conversation_by_thread_id(thread_id) if thread_id else None
+        )
+        is_temporary = bool(
+            conversation is not None
+            and (conversation.extra_metadata or {}).get("source") == TEMPORARY_CONVERSATION_SOURCE
+        )
         user_config = await UserConfig.load(db, uid)
-        enable_memory = bool(user_config.schema.enable_memory)
+        enable_memory = bool(user_config.schema.enable_memory) and not is_temporary
         setattr(context, "_enable_memory", enable_memory)
         setattr(
             context,

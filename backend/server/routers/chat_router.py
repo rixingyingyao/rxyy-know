@@ -126,6 +126,7 @@ class ThreadCreate(BaseModel):
 
 class ThreadBranchRequest(BaseModel):
     message_id: int
+    include_cutoff: bool = True
 
 
 class ThreadResponse(BaseModel):
@@ -300,6 +301,7 @@ async def branch_thread(
         message_id=body.message_id,
         db=db,
         current_uid=str(current_user.uid),
+        include_cutoff=body.include_cutoff,
     )
 
 

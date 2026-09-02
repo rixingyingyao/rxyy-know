@@ -32,8 +32,18 @@ export const useChatThreadsStore = defineStore('chatThreads', () => {
 
   const loadThreads = async (agentId = null) => {
     try {
+      const preservedCurrent = threads.value.find(
+        (thread) =>
+          thread.id === currentThreadId.value && thread.metadata?.source === 'temporary'
+      )
       const fetchedThreads = await threadApi.getThreads(agentId, PAGE_SIZE, 0)
       threads.value = fetchedThreads || []
+      if (
+        preservedCurrent &&
+        !threads.value.find((thread) => thread.id === preservedCurrent.id)
+      ) {
+        threads.value = [preservedCurrent, ...threads.value]
+      }
       hasMoreThreads.value = Boolean(fetchedThreads && fetchedThreads.length >= PAGE_SIZE)
       if (
         currentThreadId.value &&
@@ -72,11 +82,11 @@ export const useChatThreadsStore = defineStore('chatThreads', () => {
     }
   }
 
-  const createThread = async (agentId, title = '新的对话') => {
+  const createThread = async (agentId, title = '新的对话', metadata) => {
     if (!agentId) return null
 
     try {
-      const thread = await threadApi.createThread(agentId, title)
+      const thread = await threadApi.createThread(agentId, title, metadata)
       if (thread) {
         threads.value = [thread, ...threads.value.filter((item) => item.id !== thread.id)]
       }
@@ -88,10 +98,10 @@ export const useChatThreadsStore = defineStore('chatThreads', () => {
     }
   }
 
-  const branchThread = async (threadId, messageId) => {
+  const branchThread = async (threadId, messageId, options) => {
     if (!threadId || messageId == null) return null
     try {
-      const thread = await threadApi.branchThread(threadId, messageId)
+      const thread = await threadApi.branchThread(threadId, messageId, options)
       if (thread) {
         threads.value = [thread, ...threads.value.filter((item) => item.id !== thread.id)]
       }

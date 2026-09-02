@@ -14,7 +14,10 @@ from yuxi.agents.buildin import agent_manager
 from yuxi.config import config as app_config
 from yuxi.knowledge.parser import DocumentProcessorFactory, Parser
 from yuxi.repositories.agent_repository import AgentRepository
-from yuxi.repositories.conversation_repository import INVOCATION_CONVERSATION_SOURCES, ConversationRepository
+from yuxi.repositories.conversation_repository import (
+    HIDDEN_SIDEBAR_CONVERSATION_SOURCES,
+    ConversationRepository,
+)
 from yuxi.services.mention_search_service import invalidate_mention_cache
 from yuxi.storage.minio import StorageError, get_minio_client
 from yuxi.storage.postgres.models_business import User
@@ -466,12 +469,19 @@ async def _copy_messages_through(
     source_messages: list,
     cutoff_message_id: int,
     target_thread_id: str,
+    include_cutoff: bool = True,
 ) -> list:
     copied = []
-    for message in sorted(
-        (item for item in source_messages if item.id <= cutoff_message_id),
-        key=lambda item: item.id,
-    ):
+    eligible = [
+        item
+        for item in source_messages
+        if item.id <= cutoff_message_id
+    ] if include_cutoff else [
+        item
+        for item in source_messages
+        if item.id < cutoff_message_id
+    ]
+    for message in sorted(eligible, key=lambda item: item.id):
         new_message = await conv_repo.add_message_by_thread_id(
             target_thread_id,
             role=message.role,
@@ -535,6 +545,7 @@ async def branch_thread_view(
     message_id: int,
     db: AsyncSession,
     current_uid: str,
+    include_cutoff: bool = True,
 ) -> dict:
     conv_repo = ConversationRepository(db)
     conversation = await require_user_conversation(conv_repo, thread_id, str(current_uid))
@@ -562,6 +573,7 @@ async def branch_thread_view(
         source_messages=messages,
         cutoff_message_id=cutoff.id,
         target_thread_id=new_thread_id,
+        include_cutoff=include_cutoff,
     )
     agent_item = await AgentRepository(db).get_by_slug(conversation.agent_id)
     backend_id = source_metadata.get("backend_id") or getattr(agent_item, "backend_id", None)
@@ -589,7 +601,7 @@ async def list_threads_view(
         status="active",
         limit=limit,
         offset=offset,
-        exclude_sources=INVOCATION_CONVERSATION_SOURCES,
+        exclude_sources=HIDDEN_SIDEBAR_CONVERSATION_SOURCES,
     )
 
     return [
@@ -627,7 +639,7 @@ async def search_threads_view(
         query=normalized_query,
         limit=limit,
         offset=offset,
-        exclude_sources=INVOCATION_CONVERSATION_SOURCES,
+        exclude_sources=HIDDEN_SIDEBAR_CONVERSATION_SOURCES,
     )
 
     items = []

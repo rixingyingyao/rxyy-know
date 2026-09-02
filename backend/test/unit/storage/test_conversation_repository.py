@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from yuxi.repositories.conversation_repository import (
     ConversationRepository,
+    HIDDEN_SIDEBAR_CONVERSATION_SOURCES,
     INVOCATION_CONVERSATION_SOURCES,
     MAX_CONVERSATION_TITLE_LENGTH,
 )
@@ -81,7 +82,17 @@ async def test_list_conversations_excludes_invocation_sources(conversation_sessi
         updated_at=now + timedelta(minutes=1),
         extra_metadata={"source": "agent_evaluation"},
     )
-    conversation_session.add_all([normal, agent_call, agent_eval])
+    temporary = Conversation(
+        thread_id="thread-temp",
+        uid="user-a",
+        agent_id="agent-a",
+        title="临时对话",
+        status="active",
+        created_at=now,
+        updated_at=now + timedelta(minutes=3),
+        extra_metadata={"source": "temporary"},
+    )
+    conversation_session.add_all([normal, agent_call, agent_eval, temporary])
     await conversation_session.commit()
 
     repo = ConversationRepository(conversation_session)
@@ -91,8 +102,15 @@ async def test_list_conversations_excludes_invocation_sources(conversation_sessi
         offset=0,
         exclude_sources=INVOCATION_CONVERSATION_SOURCES,
     )
+    hidden_items = await repo.list_conversations(
+        uid="user-a",
+        limit=20,
+        offset=0,
+        exclude_sources=HIDDEN_SIDEBAR_CONVERSATION_SOURCES,
+    )
 
-    assert [item.thread_id for item in items] == ["thread-normal"]
+    assert [item.thread_id for item in items] == ["thread-temp", "thread-normal"]
+    assert [item.thread_id for item in hidden_items] == ["thread-normal"]
 
 
 @pytest.mark.asyncio

@@ -136,7 +136,7 @@
     <button
       type="button"
       class="message-action-btn"
-      title="编辑并重发"
+      title="编辑并在新对话中重发"
       :disabled="actionsDisabled"
       @click="emit('editResend', message)"
     >

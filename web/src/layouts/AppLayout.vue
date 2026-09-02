@@ -41,6 +41,9 @@ const userStore = useUserStore()
 const { activeCount: activeCountRef, isDrawerOpen } = storeToRefs(taskerStore)
 const { threads, currentThreadId, hasMoreThreads, isLoadingMoreThreads } =
   storeToRefs(chatThreadsStore)
+const sidebarThreads = computed(() =>
+  (threads.value || []).filter((thread) => thread.metadata?.source !== 'temporary')
+)
 
 // Add state for debug modal
 const showDebugModal = ref(false)
@@ -351,7 +354,7 @@ provide('settingsModal', {
           v-if="!sidebarCollapsed"
           class="sidebar-conversations"
           :current-chat-id="activeConversationThreadId"
-          :chats-list="threads"
+          :chats-list="sidebarThreads"
           :has-more-chats="hasMoreThreads"
           :is-loading-more="isLoadingMoreThreads"
           @select-chat="handleSelectChat"
@@ -398,7 +401,7 @@ provide('settingsModal', {
 
     <ConversationSearchModal
       v-model:open="conversationSearchOpen"
-      :recent-threads="threads"
+      :recent-threads="sidebarThreads"
       @select-thread="handleSearchSelectThread"
       @create-thread="handleCreateConversationFromSearch"
       @thread-found="handleSearchThreadFound"

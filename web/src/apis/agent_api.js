@@ -265,8 +265,11 @@ export const threadApi = {
    * @param {string} threadId
    * @param {number} messageId
    */
-  branchThread: (threadId, messageId) =>
-    apiPost(`/api/chat/thread/${threadId}/branch`, { message_id: messageId }),
+  branchThread: (threadId, messageId, { includeCutoff = true } = {}) =>
+    apiPost(`/api/chat/thread/${threadId}/branch`, {
+      message_id: messageId,
+      include_cutoff: includeCutoff
+    }),
 
   /**
    * 获取线程附件列表
