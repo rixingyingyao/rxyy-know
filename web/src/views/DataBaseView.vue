@@ -154,8 +154,8 @@
           />
         </div>
 
-        <!-- 共享配置 -->
-        <div class="form-section compact-section">
+        <!-- 共享配置：普通用户建库只能私有，后端也会再钉一次 -->
+        <div v-if="userStore.isAdmin" class="form-section compact-section">
           <h3 class="section-title">共享设置</h3>
           <ShareConfigForm
             ref="shareConfigFormRef"
@@ -232,6 +232,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/database'
+import { useUserStore } from '@/stores/user'
 import { QuestionCircleOutlined } from '@ant-design/icons-vue'
 import { Plus } from 'lucide-vue-next'
 import { message } from 'ant-design-vue'
@@ -253,6 +254,7 @@ const route = useRoute()
 const router = useRouter()
 const configStore = useConfigStore()
 const databaseStore = useDatabaseStore()
+const userStore = useUserStore()
 const {
   chunkPresetSelectOptions: chunkPresetOptions,
   chunkPresetLoading,
@@ -296,11 +298,16 @@ const state = reactive({
   openNewDatabaseModel: false
 })
 
-const createDefaultShareConfig = () => ({
-  access_level: 'global',
-  department_ids: [],
-  user_uids: []
-})
+const createDefaultShareConfig = () => {
+  if (userStore.isAdmin) {
+    return { access_level: 'global', department_ids: [], user_uids: [] }
+  }
+  return {
+    access_level: 'user',
+    department_ids: [],
+    user_uids: userStore.uid ? [userStore.uid] : []
+  }
+}
 
 const shareConfig = ref(createDefaultShareConfig())
 const shareConfigFormRef = ref(null)

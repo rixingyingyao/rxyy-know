@@ -87,7 +87,7 @@ async def test_document_file_exists_route_accepts_filename_with_slashes(monkeypa
 
     app = FastAPI()
     app.include_router(knowledge_router.knowledge, prefix="/api")
-    app.dependency_overrides[knowledge_router.get_admin_user] = fake_admin_user
+    app.dependency_overrides[knowledge_router.get_kb_reader] = fake_admin_user
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(
@@ -134,12 +134,17 @@ async def test_upload_file_rejects_jsonl_uploads():
     assert exc_info.value.detail == "Unsupported file type: .jsonl"
 
 
+async def _allow_kb_manage(kb_id: str, user) -> None:
+    return None
+
+
 async def test_upload_file_rejects_oversized_file(monkeypatch):
     monkeypatch.setattr(knowledge_router, "MAX_UPLOAD_SIZE_BYTES", 5)
 
     async def fake_ensure_database_supports_documents(kb_id: str, operation: str) -> None:
         return None
 
+    monkeypatch.setattr(knowledge_router, "ensure_kb_manageable", _allow_kb_manage)
     monkeypatch.setattr(
         knowledge_router,
         "_ensure_database_supports_documents",
@@ -152,7 +157,7 @@ async def test_upload_file_rejects_oversized_file(monkeypatch):
         await knowledge_router.upload_file(upload, kb_id="kb_1", current_user=SimpleNamespace(uid="user_1"))
 
     assert exc_info.value.status_code == 400
-    assert "100 MB" in exc_info.value.detail
+    assert "文件过大" in exc_info.value.detail
 
 
 async def test_upload_file_invalid_kb_fails_before_read_or_minio(monkeypatch):
@@ -169,6 +174,7 @@ async def test_upload_file_invalid_kb_fails_before_read_or_minio(monkeypatch):
         calls["upload"] += 1
         return "minio://knowledgebases/kb_1/upload/demo.txt"
 
+    monkeypatch.setattr(knowledge_router, "ensure_kb_manageable", _allow_kb_manage)
     monkeypatch.setattr(
         knowledge_router,
         "_ensure_database_supports_documents",
@@ -200,6 +206,7 @@ async def test_upload_file_read_only_kb_fails_before_read_or_minio(monkeypatch):
         calls["upload"] += 1
         return "minio://knowledgebases/kb_1/upload/demo.txt"
 
+    monkeypatch.setattr(knowledge_router, "ensure_kb_manageable", _allow_kb_manage)
     monkeypatch.setattr(
         knowledge_router,
         "_ensure_database_supports_documents",
@@ -225,7 +232,7 @@ async def test_markdown_endpoint_rejects_oversized_file(monkeypatch):
         await knowledge_router.mark_it_down(upload, current_user=SimpleNamespace(uid="user_1"))
 
     assert exc_info.value.status_code == 400
-    assert "100 MB" in exc_info.value.detail
+    assert "文件过大" in exc_info.value.detail
 
 
 async def test_index_documents_uses_uid_for_operator(monkeypatch):

@@ -262,6 +262,25 @@ class KnowledgeBaseManager:
             },
         )
 
+    def is_database_readable(self, user: dict, *, created_by: str | None, share_config: dict | None) -> bool:
+        """按已取出的 kb 行判断可访问性（供路由层做逐 kb 校验，避免二次查库）。"""
+        return self._database_info_accessible(user, {"created_by": created_by, "share_config": share_config})
+
+    def is_database_manageable(self, user: dict, *, created_by: str | None, share_config: dict | None) -> bool:
+        """是否可以增删改这个知识库。
+
+        superadmin 全部可管；创建者可管自己的；admin 只能管共享给自己（可访问）的；
+        普通用户不是创建者就一律不可管——这是普通用户能建库之后隔离彼此内容的唯一防线。
+        """
+        if user.get("role") == "superadmin":
+            return True
+        user_uid = str(user.get("uid") or "")
+        if user_uid and created_by is not None and str(created_by) == user_uid:
+            return True
+        if user.get("role") == "admin":
+            return self.is_database_readable(user, created_by=created_by, share_config=share_config)
+        return False
+
     async def get_databases_by_uid(self, uid: str) -> dict:
         """根据 uid 获取知识库列表"""
         from yuxi.repositories.user_repository import UserRepository
@@ -399,6 +418,7 @@ class KnowledgeBaseManager:
 
         logger.info(f"Created {kb_type} database: {database_name} ({kb_id}) with {kwargs}")
         db_info["share_config"] = share_config
+        db_info["created_by"] = created_by
         return db_info
 
     async def delete_database(self, kb_id: str) -> dict:
@@ -546,6 +566,7 @@ class KnowledgeBaseManager:
         else:
             db_info["additional_params"] = normalized_additional_params
         db_info["share_config"] = kb.share_config or DEFAULT_SHARE_CONFIG.copy()
+        db_info["created_by"] = kb.created_by
         db_info["mindmap"] = kb.mindmap
         db_info["sample_questions"] = kb.sample_questions or []
         db_info["query_params"] = kb.query_params

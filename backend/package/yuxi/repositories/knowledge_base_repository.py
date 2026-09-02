@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_knowledge import KnowledgeBase
@@ -18,6 +18,13 @@ class KnowledgeBaseRepository:
         async with pg_manager.get_async_session_context() as session:
             result = await session.execute(select(KnowledgeBase).where(KnowledgeBase.kb_id == kb_id))
             return result.scalar_one_or_none()
+
+    async def count_created_by(self, uid: str) -> int:
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(
+                select(func.count(KnowledgeBase.id)).where(KnowledgeBase.created_by == str(uid))
+            )
+            return int(result.scalar() or 0)
 
     async def create(self, data: dict[str, Any]) -> KnowledgeBase:
         kb = KnowledgeBase(**data)

@@ -46,6 +46,7 @@
               <span>复制 ID</span>
             </button>
             <button
+              v-if="canManage"
               type="button"
               class="lucide-icon-btn extension-panel-action extension-panel-action-primary"
               @click="showEditModal"
@@ -53,6 +54,7 @@
               <Pencil :size="14" />
               <span>编辑</span>
             </button>
+            <a-tag v-else color="default">只读 · 共享给你的知识库</a-tag>
           </a-space>
         </div>
       </div>
@@ -80,7 +82,7 @@
           <div v-if="isMilvus" v-show="activeTab === 'filetable'" class="tab-panel file-panel">
             <div class="file-management-info">
               <div class="file-info-title">
-                <div class="file-info-title-row">
+                <div v-if="canManage" class="file-info-title-row">
                   <button
                     type="button"
                     class="lucide-icon-btn extension-panel-action extension-panel-action-primary"
@@ -101,7 +103,7 @@
               </div>
               <div class="file-panel-status">
                 <button
-                  v-if="pendingParseCount > 0"
+                  v-if="canManage && pendingParseCount > 0"
                   type="button"
                   class="file-stat-card file-stat-action file-stat-summary"
                   :disabled="store.state.chunkLoading"
@@ -114,7 +116,7 @@
                   </div>
                 </button>
                 <button
-                  v-if="pendingIndexCount > 0"
+                  v-if="canManage && pendingIndexCount > 0"
                   type="button"
                   class="file-stat-card file-stat-action file-stat-summary"
                   :disabled="store.state.chunkLoading"
@@ -223,7 +225,7 @@
             <MindMapSection v-if="kbId" :kb-id="kbId" ref="mindmapSectionRef" />
           </div>
 
-          <div v-if="isMilvus && activeTab === 'evaluation'" class="tab-panel">
+          <div v-if="userStore.isAdmin && isMilvus && activeTab === 'evaluation'" class="tab-panel">
             <RAGEvaluationTab
               v-if="kbId"
               :kb-id="kbId"
@@ -231,7 +233,7 @@
             />
           </div>
 
-          <div v-if="isMilvus && activeTab === 'benchmarks'" class="tab-panel">
+          <div v-if="userStore.isAdmin && isMilvus && activeTab === 'benchmarks'" class="tab-panel">
             <div class="benchmark-management-container">
               <div class="benchmark-content">
                 <EvaluationBenchmarks
@@ -434,6 +436,8 @@ const isConnector = computed(
   () => isCurrentDatabaseLoaded.value && kbUtils.isReadOnlyDatabase(database.value)
 )
 const isEvaluationSupported = computed(() => isMilvus.value)
+// 后端按 kb 归属算出的 can_manage；共享给你但不是你建的库只能看不能改
+const canManage = computed(() => database.value?.can_manage === true)
 const kbTypeIcon = computed(() => getKbTypeIcon(kbType.value || 'milvus'))
 
 const databaseSubtitle = computed(() => {
@@ -449,14 +453,19 @@ const databaseSubtitle = computed(() => {
 
 const tabs = computed(() => {
   if (isMilvus.value) {
-    return [
+    const items = [
       { key: 'filetable', label: '文件管理', icon: FileText },
       { key: 'query', label: '检索测试', icon: Search },
       { key: 'graph', label: '知识图谱', icon: Network },
-      { key: 'mindmap', label: '知识导图', icon: MapIcon },
-      { key: 'evaluation', label: 'RAG 评估', icon: BarChart3 },
-      { key: 'benchmarks', label: '评估基准', icon: ClipboardList }
+      { key: 'mindmap', label: '知识导图', icon: MapIcon }
     ]
+    if (userStore.isAdmin) {
+      items.push(
+        { key: 'evaluation', label: 'RAG 评估', icon: BarChart3 },
+        { key: 'benchmarks', label: '评估基准', icon: ClipboardList }
+      )
+    }
+    return items
   }
 
   return [{ key: 'query', label: '检索测试', icon: Search }]

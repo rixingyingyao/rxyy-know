@@ -209,35 +209,88 @@ async def test_update_database_additional_params_merge_keeps_chunk_preset(
     assert info_response.json()["additional_params"]["chunk_preset_id"] == "qa"
 
 
-async def test_knowledge_routes_enforce_permissions(test_client, standard_user, knowledge_database):
+async def test_knowledge_routes_enforce_permissions(test_client, standard_user, admin_headers, knowledge_database):
     kb_id = knowledge_database["kb_id"]
+    own_kb_id = None
 
-    forbidden_create = await test_client.post(
-        "/api/knowledge/databases",
-        json={
-            "database_name": "unauthorized_db",
-            "description": "Should not succeed",
-            "embedding_model_spec": "siliconflow-cn:Pro/BAAI/bge-m3",
-        },
-        headers=standard_user["headers"],
-    )
-    _assert_forbidden_response(forbidden_create)
+    try:
+        allowed_list = await test_client.get("/api/knowledge/databases", headers=standard_user["headers"])
+        assert allowed_list.status_code == 200, allowed_list.text
 
-    forbidden_list = await test_client.get("/api/knowledge/databases", headers=standard_user["headers"])
-    _assert_forbidden_response(forbidden_list)
+        allowed_chunk_presets = await test_client.get("/api/knowledge/chunk-presets", headers=standard_user["headers"])
+        assert allowed_chunk_presets.status_code == 200, allowed_chunk_presets.text
 
-    forbidden_chunk_presets = await test_client.get("/api/knowledge/chunk-presets", headers=standard_user["headers"])
-    _assert_forbidden_response(forbidden_chunk_presets)
+        # 管理员新建库默认 global：普通用户可读但不能改
+        readable = await test_client.get(f"/api/knowledge/databases/{kb_id}", headers=standard_user["headers"])
+        assert readable.status_code == 200, readable.text
+        assert readable.json()["can_manage"] is False
 
-    forbidden_get = await test_client.get(f"/api/knowledge/databases/{kb_id}", headers=standard_user["headers"])
-    _assert_forbidden_response(forbidden_get)
+        forbidden_update = await test_client.put(
+            f"/api/knowledge/databases/{kb_id}",
+            json={"name": knowledge_database["name"], "description": "hijack"},
+            headers=standard_user["headers"],
+        )
+        _assert_forbidden_response(forbidden_update)
 
-    forbidden_exists = await test_client.get(
-        f"/api/knowledge/databases/{kb_id}/documents/exists",
-        params={"filename": "demo.txt"},
-        headers=standard_user["headers"],
-    )
-    _assert_forbidden_response(forbidden_exists)
+        forbidden_delete = await test_client.delete(
+            f"/api/knowledge/databases/{kb_id}", headers=standard_user["headers"]
+        )
+        _assert_forbidden_response(forbidden_delete)
+
+        forbidden_stats = await test_client.get("/api/knowledge/stats", headers=standard_user["headers"])
+        _assert_forbidden_response(forbidden_stats)
+
+        # 改成仅管理员自己后，普通用户连读都 403
+        lock_private = await test_client.put(
+            f"/api/knowledge/databases/{kb_id}",
+            json={
+                "name": knowledge_database["name"],
+                "description": knowledge_database.get("description") or "private",
+                "share_config": {"access_level": "user", "department_ids": [], "user_uids": []},
+            },
+            headers=admin_headers,
+        )
+        assert lock_private.status_code == 200, lock_private.text
+
+        forbidden_get = await test_client.get(f"/api/knowledge/databases/{kb_id}", headers=standard_user["headers"])
+        _assert_forbidden_response(forbidden_get)
+
+        forbidden_exists = await test_client.get(
+            f"/api/knowledge/databases/{kb_id}/documents/exists",
+            params={"filename": "demo.txt"},
+            headers=standard_user["headers"],
+        )
+        _assert_forbidden_response(forbidden_exists)
+
+        created = await test_client.post(
+            "/api/knowledge/databases",
+            json={
+                "database_name": f"user_owned_{uuid.uuid4().hex[:8]}",
+                "description": "owned by standard user",
+                "embedding_model_spec": "siliconflow-cn:Pro/BAAI/bge-m3",
+                "kb_type": "milvus",
+                "share_config": {"access_level": "global", "department_ids": [], "user_uids": []},
+            },
+            headers=standard_user["headers"],
+        )
+        assert created.status_code == 200, created.text
+        created_payload = created.json()
+        own_kb_id = created_payload["kb_id"]
+        assert created_payload["can_manage"] is True
+        assert created_payload["share_config"]["access_level"] == "user"
+        assert created_payload["share_config"]["user_uids"] == [standard_user["user"]["uid"]]
+
+        own_get = await test_client.get(
+            f"/api/knowledge/databases/{own_kb_id}", headers=standard_user["headers"]
+        )
+        assert own_get.status_code == 200, own_get.text
+        assert own_get.json()["can_manage"] is True
+    finally:
+        if own_kb_id:
+            cleanup = await test_client.delete(
+                f"/api/knowledge/databases/{own_kb_id}", headers=standard_user["headers"]
+            )
+            assert cleanup.status_code in (200, 404), cleanup.text
 
 
 async def test_admin_can_create_vector_db_with_reranker(test_client, admin_headers):
@@ -760,18 +813,18 @@ async def test_sample_questions_endpoints(test_client, admin_headers, knowledge_
     assert "中没有文件" in generate_response.json()["detail"]
 
 
-async def test_mindmap_permissions(test_client, standard_user, knowledge_database):
-    """测试思维导图接口的权限控制"""
+async def test_mindmap_permissions(test_client, standard_user, admin_headers, knowledge_database):
+    """普通用户可看自己能访问的库的导图，但不能改别人的库。"""
     kb_id = knowledge_database["kb_id"]
 
-    # 普通用户应该无法访问
-    forbidden_list = await test_client.get("/api/knowledge/mindmap/databases", headers=standard_user["headers"])
-    _assert_forbidden_response(forbidden_list)
+    allowed_list = await test_client.get("/api/knowledge/mindmap/databases", headers=standard_user["headers"])
+    assert allowed_list.status_code == 200, allowed_list.text
 
-    forbidden_files = await test_client.get(
+    # 管理员库默认 global：可读文件列表，但不能触发生成
+    allowed_files = await test_client.get(
         f"/api/knowledge/databases/{kb_id}/mindmap/files", headers=standard_user["headers"]
     )
-    _assert_forbidden_response(forbidden_files)
+    assert allowed_files.status_code == 200, allowed_files.text
 
     forbidden_generate = await test_client.post(
         f"/api/knowledge/databases/{kb_id}/mindmap/generate",
@@ -779,3 +832,19 @@ async def test_mindmap_permissions(test_client, standard_user, knowledge_databas
         headers=standard_user["headers"],
     )
     _assert_forbidden_response(forbidden_generate)
+
+    lock_private = await test_client.put(
+        f"/api/knowledge/databases/{kb_id}",
+        json={
+            "name": knowledge_database["name"],
+            "description": knowledge_database.get("description") or "private",
+            "share_config": {"access_level": "user", "department_ids": [], "user_uids": []},
+        },
+        headers=admin_headers,
+    )
+    assert lock_private.status_code == 200, lock_private.text
+
+    forbidden_files = await test_client.get(
+        f"/api/knowledge/databases/{kb_id}/mindmap/files", headers=standard_user["headers"]
+    )
+    _assert_forbidden_response(forbidden_files)

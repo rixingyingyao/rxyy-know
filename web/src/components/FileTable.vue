@@ -89,6 +89,7 @@
             </a-dropdown>
 
             <a-button
+              v-if="canManage"
               type="text"
               @click="toggleSelectionMode"
               title="多选"
@@ -137,6 +138,7 @@
                   </a-dropdown>
 
                   <div
+                    v-if="canManage"
                     class="overflow-action-item"
                     :class="{ active: isSelectionMode }"
                     @click="toggleSelectionMode"
@@ -184,7 +186,7 @@
               失败自动尝试其他 OCR
             </a-checkbox>
           </div>
-          <div style="display: flex; gap: 2px">
+          <div v-if="canManage" style="display: flex; gap: 2px">
             <a-button
               type="link"
               @click="handleBatchParse"
@@ -204,6 +206,7 @@
               批量入库
             </a-button>
             <a-button
+              v-if="userStore.isAdmin"
               type="link"
               @click="handleBatchTag"
               :loading="batchTagging"
@@ -328,14 +331,17 @@
             <template #content>
               <div class="file-action-list">
                 <template v-if="row.is_folder">
-                  <a-button type="text" block @click="showCreateFolderModal(row.file_id)">
-                    <template #icon><component :is="h(FolderPlus)" size="14" /></template>
-                    新建子文件夹
-                  </a-button>
-                  <a-button type="text" block danger @click="handleDeleteFolder(row)">
-                    <template #icon><component :is="h(Trash2)" size="14" /></template>
-                    删除文件夹
-                  </a-button>
+                  <template v-if="canManage">
+                    <a-button type="text" block @click="showCreateFolderModal(row.file_id)">
+                      <template #icon><component :is="h(FolderPlus)" size="14" /></template>
+                      新建子文件夹
+                    </a-button>
+                    <a-button type="text" block danger @click="handleDeleteFolder(row)">
+                      <template #icon><component :is="h(Trash2)" size="14" /></template>
+                      删除文件夹
+                    </a-button>
+                  </template>
+                  <span v-else class="file-action-readonly">只读</span>
                 </template>
                 <template v-else>
                   <a-button
@@ -348,52 +354,54 @@
                     下载文件
                   </a-button>
 
-                  <!-- Parse Action -->
-                  <a-button
-                    v-if="canParseFile(row)"
-                    type="text"
-                    block
-                    @click="handleParseFile(row)"
-                    :disabled="lock"
-                  >
-                    <template #icon><component :is="h(FileText)" size="14" /></template>
-                    {{ getFilePrimaryAction(row)?.label || '解析文件' }}
-                  </a-button>
+                  <template v-if="canManage">
+                    <!-- Parse Action -->
+                    <a-button
+                      v-if="canParseFile(row)"
+                      type="text"
+                      block
+                      @click="handleParseFile(row)"
+                      :disabled="lock"
+                    >
+                      <template #icon><component :is="h(FileText)" size="14" /></template>
+                      {{ getFilePrimaryAction(row)?.label || '解析文件' }}
+                    </a-button>
 
-                  <!-- Index Action -->
-                  <a-button
-                    v-if="getFilePrimaryAction(row)?.type === FILE_ACTIONS.INDEX"
-                    type="text"
-                    block
-                    @click="handleIndexFile(row)"
-                    :disabled="lock"
-                  >
-                    <template #icon><component :is="h(Database)" size="14" /></template>
-                    {{ getFilePrimaryAction(row)?.label || '入库' }}
-                  </a-button>
+                    <!-- Index Action -->
+                    <a-button
+                      v-if="getFilePrimaryAction(row)?.type === FILE_ACTIONS.INDEX"
+                      type="text"
+                      block
+                      @click="handleIndexFile(row)"
+                      :disabled="lock"
+                    >
+                      <template #icon><component :is="h(Database)" size="14" /></template>
+                      {{ getFilePrimaryAction(row)?.label || '入库' }}
+                    </a-button>
 
-                  <!-- Reindex Action -->
-                  <a-button
-                    v-if="canReindexFile(row)"
-                    type="text"
-                    block
-                    @click="handleReindexFile(row)"
-                    :disabled="lock"
-                  >
-                    <template #icon><component :is="h(RotateCw)" size="14" /></template>
-                    重新入库
-                  </a-button>
+                    <!-- Reindex Action -->
+                    <a-button
+                      v-if="canReindexFile(row)"
+                      type="text"
+                      block
+                      @click="handleReindexFile(row)"
+                      :disabled="lock"
+                    >
+                      <template #icon><component :is="h(RotateCw)" size="14" /></template>
+                      重新入库
+                    </a-button>
 
-                  <a-button
-                    type="text"
-                    block
-                    danger
-                    @click="handleDeleteFile(row.file_id)"
-                    :disabled="!canDeleteFile(row, lock)"
-                  >
-                    <template #icon><component :is="h(Trash2)" size="14" /></template>
-                    删除文件
-                  </a-button>
+                    <a-button
+                      type="text"
+                      block
+                      danger
+                      @click="handleDeleteFile(row.file_id)"
+                      :disabled="!canDeleteFile(row, lock)"
+                    >
+                      <template #icon><component :is="h(Trash2)" size="14" /></template>
+                      删除文件
+                    </a-button>
+                  </template>
                 </template>
               </div>
             </template>
@@ -409,6 +417,7 @@
 <script setup>
 import { ref, computed, h, watch } from 'vue'
 import { useDatabaseStore } from '@/stores/database'
+import { useUserStore } from '@/stores/user'
 import { message, Modal } from 'ant-design-vue'
 import { documentApi } from '@/apis/knowledge_api'
 import { taggingApi } from '@/apis/tagging_api'
@@ -448,6 +457,9 @@ import {
 } from 'lucide-vue-next'
 
 const store = useDatabaseStore()
+const userStore = useUserStore()
+// 后端 can_manage：自己创建的 / 管理员可管的才显示写操作；共享给你的库只读
+const canManage = computed(() => store.database?.can_manage === true)
 
 const applyFilters = async (overrides = {}) => {
   const nextStatus = overrides.status ?? statusFilter.value
@@ -1488,6 +1500,12 @@ import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
   display: flex;
   flex-direction: column;
   gap: 2px;
+
+  .file-action-readonly {
+    padding: 6px 8px;
+    font-size: 13px;
+    color: var(--gray-500);
+  }
 
   .ant-btn {
     text-align: left;

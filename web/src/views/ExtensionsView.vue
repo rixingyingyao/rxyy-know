@@ -11,7 +11,7 @@
     />
 
     <div v-if="!isDetailPage" class="extensions-content">
-      <div v-if="userStore.isAdmin && activeTab === 'knowledge'" class="tab-panel">
+      <div v-if="activeTab === 'knowledge'" class="tab-panel">
         <DataBaseView ref="knowledgeRef" embedded />
       </div>
       <div v-if="userStore.isAdmin && activeTab === 'tools'" class="tab-panel">
@@ -54,7 +54,11 @@ const adminExtensionTabs = [
   { key: 'mcp', label: 'MCP' },
   { key: 'skills', label: 'Skills' }
 ]
-const userExtensionTabs = [{ key: 'skills', label: 'Skills' }]
+// 普通用户也能管自己的知识库（后端按 kb 归属校验）；工具 / MCP 是全站配置，仍只给管理员
+const userExtensionTabs = [
+  { key: 'knowledge', label: '知识库' },
+  { key: 'skills', label: 'Skills' }
+]
 const extensionTabs = computed(() => (userStore.isAdmin ? adminExtensionTabs : userExtensionTabs))
 const allowedTabKeys = computed(() => extensionTabs.value.map((tab) => tab.key))
 const defaultTabKey = computed(() => extensionTabs.value[0]?.key || 'skills')

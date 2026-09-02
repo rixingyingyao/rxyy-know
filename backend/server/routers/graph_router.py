@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from server.utils.auth_middleware import get_admin_user
+from server.utils.auth_middleware import get_required_user
+from server.utils.kb_permission import get_kb_reader
 from yuxi import knowledge_base
 from yuxi.knowledge.graphs.milvus_graph_service import MilvusGraphService
 from yuxi.storage.postgres.models_business import User
@@ -22,8 +23,8 @@ async def _get_graph_service(kb_id: str) -> MilvusGraphService:
 
 
 @graph.get("/list")
-async def get_graphs(current_user: User = Depends(get_admin_user)):
-    """获取支持图谱能力的 Milvus 知识库列表"""
+async def get_graphs(current_user: User = Depends(get_required_user)):
+    """获取当前用户可访问且支持图谱能力的 Milvus 知识库列表"""
     try:
         databases = (await knowledge_base.get_databases_by_uid(current_user.uid)).get("databases", [])
         graphs = []
@@ -54,7 +55,7 @@ async def get_subgraph(
     max_depth: int = Query(2, description="最大深度", ge=1, le=5),
     max_nodes: int = Query(100, description="最大节点数", ge=1, le=1000),
     exclude_chunk: bool = Query(False, description="是否排除 Chunk 节点"),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_kb_reader),
 ):
     """查询 Milvus 知识库图谱子图"""
     try:
@@ -77,7 +78,7 @@ async def get_subgraph(
 @graph.get("/labels")
 async def get_graph_labels(
     kb_id: str = Query(..., description="Milvus 知识库ID"),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_kb_reader),
 ):
     """获取 Milvus 知识库图谱的所有标签"""
     try:
@@ -94,7 +95,7 @@ async def get_graph_labels(
 @graph.get("/stats")
 async def get_graph_stats(
     kb_id: str = Query(..., description="Milvus 知识库ID"),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_kb_reader),
 ):
     """获取 Milvus 知识库图谱统计信息"""
     try:
