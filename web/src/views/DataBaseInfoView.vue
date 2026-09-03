@@ -142,38 +142,56 @@
                     <span>总大小</span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  class="file-stat-card file-stat-summary file-stat-repair"
-                  :disabled="statsRepairing"
-                  :aria-busy="statsRepairing"
-                  aria-label="修复缺失的 Chunk/Token 统计"
-                  title="修复缺失的 Chunk/Token 统计"
-                  @click="repairDatabaseStats"
-                >
-                  <LoaderCircle v-if="statsRepairing" :size="16" class="file-stat-spinner" />
-                  <DatabaseIcon v-else :size="16" />
-                  <div class="file-stat-inline">
-                    <strong>{{ fileStats.chunkText }}</strong>
-                    <span>Chunks</span>
+                <template v-if="canManage">
+                  <button
+                    type="button"
+                    class="file-stat-card file-stat-summary file-stat-repair"
+                    :disabled="statsRepairing"
+                    :aria-busy="statsRepairing"
+                    aria-label="修复缺失的 Chunk/Token 统计"
+                    title="修复缺失的 Chunk/Token 统计"
+                    @click="repairDatabaseStats"
+                  >
+                    <LoaderCircle v-if="statsRepairing" :size="16" class="file-stat-spinner" />
+                    <DatabaseIcon v-else :size="16" />
+                    <div class="file-stat-inline">
+                      <strong>{{ fileStats.chunkText }}</strong>
+                      <span>Chunks</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    class="file-stat-card file-stat-summary file-stat-repair"
+                    :disabled="statsRepairing"
+                    :aria-busy="statsRepairing"
+                    aria-label="修复缺失的 Chunk/Token 统计"
+                    title="修复缺失的 Chunk/Token 统计"
+                    @click="repairDatabaseStats"
+                  >
+                    <LoaderCircle v-if="statsRepairing" :size="16" class="file-stat-spinner" />
+                    <Hash v-else :size="16" />
+                    <div class="file-stat-inline">
+                      <strong>{{ fileStats.tokenText }}</strong>
+                      <span>Tokens</span>
+                    </div>
+                  </button>
+                </template>
+                <template v-else>
+                  <div class="file-stat-card file-stat-summary">
+                    <DatabaseIcon :size="16" />
+                    <div class="file-stat-inline">
+                      <strong>{{ fileStats.chunkText }}</strong>
+                      <span>Chunks</span>
+                    </div>
                   </div>
-                </button>
-                <button
-                  type="button"
-                  class="file-stat-card file-stat-summary file-stat-repair"
-                  :disabled="statsRepairing"
-                  :aria-busy="statsRepairing"
-                  aria-label="修复缺失的 Chunk/Token 统计"
-                  title="修复缺失的 Chunk/Token 统计"
-                  @click="repairDatabaseStats"
-                >
-                  <LoaderCircle v-if="statsRepairing" :size="16" class="file-stat-spinner" />
-                  <Hash v-else :size="16" />
-                  <div class="file-stat-inline">
-                    <strong>{{ fileStats.tokenText }}</strong>
-                    <span>Tokens</span>
+                  <div class="file-stat-card file-stat-summary">
+                    <Hash :size="16" />
+                    <div class="file-stat-inline">
+                      <strong>{{ fileStats.tokenText }}</strong>
+                      <span>Tokens</span>
+                    </div>
                   </div>
-                </button>
+                </template>
               </div>
             </div>
             <FileTable ref="fileTableRef" />
