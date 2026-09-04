@@ -150,6 +150,7 @@
               <!-- 打招呼区域 - 在输入框上方 -->
               <div v-if="!conversations.length" class="chat-greeting-input">
                 <h1>{{ randomGreeting }}</h1>
+                <p v-if="boundKnowledgeHint" class="chat-kb-hint">{{ boundKnowledgeHint }}</p>
               </div>
 
               <AgentInputArea
@@ -684,6 +685,15 @@ const greetingMessages = [
 
 // 随机选择一个打招呼文本
 const randomGreeting = greetingMessages[Math.floor(Math.random() * greetingMessages.length)]
+const boundKnowledgeHint = computed(() => {
+  const knowledgeBases = mentionConfig.value?.knowledgeBases || []
+  const names = knowledgeBases.map((kb) => kb?.name || kb?.kb_id).filter(Boolean)
+  if (!names.length) return ''
+  if (names.length === 1) return `已绑定「${names[0]}」，直接提问即可检索，不必先 @。`
+  const preview = names.slice(0, 2).join('、')
+  const suffix = names.length > 2 ? ' 等' : ''
+  return `已绑定 ${names.length} 个知识库（${preview}${suffix}），直接提问即可检索。`
+})
 
 // 业务状态（保留在组件本地）
 const chatState = reactive({
@@ -3298,6 +3308,13 @@ watch(currentChatId, (threadId, oldThreadId) => {
     font-size: 1.4rem;
     color: var(--gray-1000);
     margin: 0;
+  }
+
+  .chat-kb-hint {
+    margin: 12px 0 0;
+    color: var(--gray-600);
+    font-size: 14px;
+    line-height: 1.5;
   }
 }
 

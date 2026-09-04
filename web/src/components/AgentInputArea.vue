@@ -105,7 +105,13 @@ const emit = defineEmits([
 
 const inputRef = ref(null)
 const currentImage = ref(null)
-const placeholder = '给智能体发送消息'
+const placeholder = computed(() => {
+  const knowledgeBases = Array.isArray(props.mention?.knowledgeBases) ? props.mention.knowledgeBases : []
+  const names = knowledgeBases.map((kb) => kb?.name || kb?.kb_id).filter(Boolean)
+  if (names.length === 1) return `向「${names[0]}」提问，或输入 @`
+  if (names.length > 1) return '直接提问会检索已绑定知识库，或输入 @'
+  return '给智能体发送消息'
+})
 
 const previewAttachments = computed(() => normalizeAttachmentPreviews(props.attachments))
 

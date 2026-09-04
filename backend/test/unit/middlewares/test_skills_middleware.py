@@ -11,6 +11,7 @@ from yuxi.agents.middlewares.skills import (
     SkillsMiddleware,
     resolve_runtime_skills_for_context,
     resolve_skill_gated_tools,
+    should_auto_activate_knowledge_base,
 )
 from yuxi.agents.toolkits.service import resolve_configured_runtime_tools
 
@@ -287,6 +288,105 @@ async def test_awrap_model_call_keeps_gated_tools_when_activated():
     await SkillsMiddleware().awrap_model_call(request, handler)
 
     assert captured["tools"] == {"read_file", "list_kbs", "query_kb"}
+
+
+def _make_knowledge_base_request(*, visible_kbs, activated=(), prompt_skills=None, tools=None):
+    kb_tools = [
+        SimpleNamespace(name="list_kbs"),
+        SimpleNamespace(name="query_kb"),
+        SimpleNamespace(name="search_file"),
+    ]
+    runtime_context = SimpleNamespace(
+        _readable_skills=["knowledge-base"],
+        _prompt_skills=list(prompt_skills) if prompt_skills is not None else ["knowledge-base"],
+        _visible_knowledge_bases=list(visible_kbs),
+        _runtime_skill_dependency_map={
+            "knowledge-base": {
+                "tools": ["list_kbs", "query_kb", "search_file"],
+                "mcps": [],
+                "skills": [],
+            }
+        },
+        _runtime_skill_metadata={
+            "knowledge-base": {
+                "name": "知识库",
+                "description": "检索已配置知识库",
+                "path": "/home/gem/skills/knowledge-base/SKILL.md",
+            }
+        },
+        mcps=[],
+    )
+
+    class FakeRequest:
+        def __init__(self, req_tools, system_message=None):
+            self.runtime = SimpleNamespace(context=runtime_context)
+            self.state = {"activated_skills": list(activated)}
+            self.tools = req_tools
+            self.system_message = system_message or SystemMessage(content="base")
+
+        def override(self, **kwargs):
+            new_request = FakeRequest(
+                kwargs.get("tools", self.tools),
+                system_message=kwargs.get("system_message", self.system_message),
+            )
+            new_request.runtime = self.runtime
+            new_request.state = self.state
+            return new_request
+
+    return FakeRequest([SimpleNamespace(name="read_file"), *(tools or kb_tools)])
+
+
+@pytest.mark.asyncio
+async def test_awrap_model_call_auto_activates_knowledge_base_when_visible_kbs():
+    request = _make_knowledge_base_request(
+        visible_kbs=[{"kb_id": "kb_demo", "name": "演示库"}],
+        activated=[],
+    )
+    captured = {}
+
+    async def handler(req):
+        captured["tools"] = {tool.name for tool in req.tools}
+        captured["system_message"] = req.system_message
+        return "ok"
+
+    result = await SkillsMiddleware().awrap_model_call(request, handler)
+    prompt_text = _system_message_text(captured["system_message"])
+
+    assert result == "ok"
+    assert captured["tools"] == {"read_file", "list_kbs", "query_kb", "search_file"}
+    assert "不必先读 SKILL.md" in prompt_text
+    assert "/home/gem/skills/knowledge-base/SKILL.md" not in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_awrap_model_call_does_not_auto_activate_knowledge_base_without_visible_kbs():
+    request = _make_knowledge_base_request(visible_kbs=[], activated=[])
+    captured = {}
+
+    async def handler(req):
+        captured["tools"] = {tool.name for tool in req.tools}
+        captured["system_message"] = req.system_message
+        return "ok"
+
+    await SkillsMiddleware().awrap_model_call(request, handler)
+    prompt_text = _system_message_text(captured["system_message"])
+
+    assert captured["tools"] == {"read_file"}
+    assert "Read `/home/gem/skills/knowledge-base/SKILL.md`" in prompt_text
+    assert "不必先读 SKILL.md" not in prompt_text
+
+
+def test_should_auto_activate_knowledge_base_requires_readable_skill_and_visible_kbs():
+    readable = {"knowledge-base"}
+    assert should_auto_activate_knowledge_base(
+        SimpleNamespace(_visible_knowledge_bases=[{"kb_id": "kb_1"}]),
+        readable,
+    )
+    assert not should_auto_activate_knowledge_base(SimpleNamespace(_visible_knowledge_bases=[]), readable)
+    assert not should_auto_activate_knowledge_base(
+        SimpleNamespace(_visible_knowledge_bases=[{"kb_id": "kb_1"}]),
+        set(),
+    )
 
 
 def test_read_file_activates_only_readable_skill() -> None:

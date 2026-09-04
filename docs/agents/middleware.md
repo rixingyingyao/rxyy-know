@@ -35,7 +35,7 @@
 
 ## 知识库工具
 
-知识库访问能力沉淀为内置 `knowledge-base` Skill。Agent 读取 `/home/gem/skills/knowledge-base/SKILL.md` 激活该 Skill 后，`SkillsMiddleware` 会按依赖追加 `list_kbs`、`query_kb`、`find_kb_document`、`open_kb_document`、`get_mindmap` 等知识库工具。
+知识库访问能力沉淀为内置 `knowledge-base` Skill。默认仍按需加载：模型读取 `/home/gem/skills/knowledge-base/SKILL.md` 后才会把 `list_kbs`、`query_kb` 等工具交给模型。**例外**：当前会话已有可见知识库（`_visible_knowledge_bases` 非空）且该 Skill 在 `_readable_skills` 中时，`SkillsMiddleware` 会在首轮模型调用前自动激活，直接放出检索工具，并在提示词里写明不必再读 `SKILL.md`。这样试用对话不用先 `@知识库` / `@Skill`，也不会卡在沙盒读文件超时。
 
 实际可见知识库仍由 `prepare_agent_runtime_context` 根据当前用户和 Agent 配置写入 `_visible_knowledge_bases`，工具执行时只会在这批知识库中检索。`context.knowledges` 是资源范围，不是 Skill 本身。
 

@@ -21,6 +21,21 @@ from yuxi.agents.toolkits import get_all_tool_instances
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.utils.logging_config import logger
 
+KNOWLEDGE_BASE_SKILL_SLUG = "knowledge-base"
+_KNOWLEDGE_BASE_READY_HINT = (
+    "已加载，可直接使用 list_kbs / query_kb / find_kb_document / "
+    "open_kb_document / get_mindmap / search_file，不必先读 SKILL.md"
+)
+
+
+def should_auto_activate_knowledge_base(runtime_context, readable_skills: set[str]) -> bool:
+    """会话已绑定可见知识库时，首轮放出 knowledge-base 工具，避免再走沙盒读 SKILL.md。"""
+    if KNOWLEDGE_BASE_SKILL_SLUG not in readable_skills:
+        return False
+    visible = getattr(runtime_context, "_visible_knowledge_bases", None) or []
+    return bool(visible)
+
+
 # =============================================================================
 # 类型定义
 # =============================================================================
@@ -222,16 +237,6 @@ class SkillsMiddleware(AgentMiddleware):
         """包装模型调用，处理 skills 提示词注入、动态激活和依赖展开"""
         runtime_context = request.runtime.context
 
-        if self.enable_skills_prompt:
-            prompt_skills = getattr(runtime_context, "_prompt_skills", None)
-            if isinstance(prompt_skills, list):
-                prompt_skills = normalize_string_list(prompt_skills)
-                if prompt_skills:
-                    skills_meta = self._collect_prompt_metadata(prompt_skills, runtime_context)
-                    skills_section = self._build_skills_section(skills_meta)
-                    system_message = append_to_system_message(getattr(request, "system_message", None), skills_section)
-                    request = request.override(system_message=system_message)
-
         state = request.state if isinstance(request.state, dict) else {}
         activated = state.get("activated_skills", []) or []
         if not isinstance(activated, list):
@@ -239,6 +244,21 @@ class SkillsMiddleware(AgentMiddleware):
 
         readable_skills = self._get_readable_skills(runtime_context)
         activated = [slug for slug in normalize_string_list(activated) if slug in readable_skills]
+        if should_auto_activate_knowledge_base(runtime_context, readable_skills):
+            activated = _activated_skills_reducer(activated, [KNOWLEDGE_BASE_SKILL_SLUG])
+
+        if self.enable_skills_prompt:
+            prompt_skills = getattr(runtime_context, "_prompt_skills", None)
+            if isinstance(prompt_skills, list):
+                prompt_skills = normalize_string_list(prompt_skills)
+                if prompt_skills:
+                    skills_meta = self._collect_prompt_metadata(prompt_skills, runtime_context)
+                    skills_section = self._build_skills_section(
+                        skills_meta,
+                        activated_skills=set(activated),
+                    )
+                    system_message = append_to_system_message(getattr(request, "system_message", None), skills_section)
+                    request = request.override(system_message=system_message)
 
         deps_bundle = self._build_dependency_bundle(activated, runtime_context)
         activated_tool_names = set(deps_bundle["tools"])
@@ -324,7 +344,7 @@ class SkillsMiddleware(AgentMiddleware):
             if not item:
                 logger.debug(f"Skill slug not found in prompt metadata, skip: {normalized}")
                 continue
-            result.append(dict(item))
+            result.append({**item, "slug": normalized})
 
         return result
 
@@ -469,21 +489,34 @@ class SkillsMiddleware(AgentMiddleware):
             locations.append(f"**{name} Skills**: `{source_path}`{suffix}")
         return "\n".join(locations)
 
-    def _format_skills_list(self, skills_meta: list[dict[str, str]]) -> str:
+    def _format_skills_list(
+        self,
+        skills_meta: list[dict[str, str]],
+        activated_skills: set[str] | None = None,
+    ) -> str:
         """格式化 skills 列表"""
         if not skills_meta:
             return f"(No skills available yet. You can create skills in {' or '.join(self.skills_sources_for_prompt)})"
 
+        activated = activated_skills or set()
         lines = []
         for skill in skills_meta:
             lines.append(f"- **{skill['name']}**: {skill['description']}")
-            lines.append(f"  -> Read `{skill['path']}` for full instructions")
+            slug = str(skill.get("slug") or "").strip()
+            if slug == KNOWLEDGE_BASE_SKILL_SLUG and slug in activated:
+                lines.append(f"  -> {_KNOWLEDGE_BASE_READY_HINT}")
+            else:
+                lines.append(f"  -> Read `{skill['path']}` for full instructions")
         return "\n".join(lines)
 
-    def _build_skills_section(self, skills_meta: list[dict[str, str]]) -> str:
+    def _build_skills_section(
+        self,
+        skills_meta: list[dict[str, str]],
+        activated_skills: set[str] | None = None,
+    ) -> str:
         """构建 skills 提示段"""
         skills_locations = self._format_skills_locations(self.skills_sources_for_prompt)
-        skills_list = self._format_skills_list(skills_meta)
+        skills_list = self._format_skills_list(skills_meta, activated_skills=activated_skills)
         return SKILLS_SYSTEM_PROMPT.format(
             skills_locations=skills_locations,
             skills_load_warnings="",
