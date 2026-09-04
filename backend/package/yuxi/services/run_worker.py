@@ -7,6 +7,7 @@ import json
 import time
 from dataclasses import dataclass, field
 
+from arq import cron
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from yuxi.agents.mcp.service import ensure_builtin_mcp_servers_in_db
@@ -21,9 +22,16 @@ from yuxi.services.run_queue_service import (
     has_cancel_signal,
     wait_for_cancel_signal,
 )
+from yuxi.services.trial_cleanup_service import (
+    TRIAL_CLEANUP_HOUR,
+    TRIAL_CLEANUP_MINUTE,
+    cleanup_enabled,
+    run_trial_cleanup_job,
+)
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import Message, User
 from yuxi.storage.redis import get_arq_redis_settings
+from yuxi.utils.datetime_utils import SHANGHAI_TZ
 from yuxi.utils.logging_config import logger
 from yuxi.utils.thread_utils import extract_thread_id
 
@@ -564,6 +572,13 @@ async def _worker_shutdown(ctx):
 
 class WorkerSettings:
     functions = [process_agent_run]
+    # 试用账号每晚清空；cron 的时刻按 Asia/Shanghai 解释（arq 默认用容器本地时区，镜像里是 UTC）。
+    timezone = SHANGHAI_TZ
+    cron_jobs = (
+        [cron(run_trial_cleanup_job, hour=TRIAL_CLEANUP_HOUR, minute=TRIAL_CLEANUP_MINUTE, timeout=1800)]
+        if cleanup_enabled()
+        else []
+    )
     max_tries = 2
     retry_jobs = True
     job_timeout = 3600

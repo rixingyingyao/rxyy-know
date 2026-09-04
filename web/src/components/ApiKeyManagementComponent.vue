@@ -17,7 +17,12 @@
         >
           <template #icon><RefreshCw :size="16" :class="{ spin: refreshing }" /></template>
         </a-button>
-        <a-button type="primary" @click="showCreateModal" class="add-btn lucide-icon-btn">
+        <a-button
+          v-if="canIssueKeys"
+          type="primary"
+          @click="showCreateModal"
+          class="add-btn lucide-icon-btn"
+        >
           <Plus :size="14" />
           创建 API Key
         </a-button>
@@ -33,7 +38,7 @@
 
         <div class="cards-container">
           <div v-if="apiKeys.length === 0" class="empty-state">
-            <a-empty description="暂无 API Key，点击上方按钮创建一个" />
+            <a-empty :description="emptyDescription" />
           </div>
           <div v-else class="apikey-cards-grid">
             <div v-for="key in apiKeys" :key="key.id" class="apikey-card">
@@ -64,7 +69,7 @@
                   <a-switch :checked="key.is_enabled" size="small" @change="toggleEnabled(key)" />
                 </div>
                 <div class="footer-actions">
-                  <a-tooltip title="重新生成（获取完整密钥）">
+                  <a-tooltip v-if="canIssueKeys" title="重新生成（获取完整密钥）">
                     <a-button
                       type="text"
                       size="small"
@@ -149,11 +154,18 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { Plus, RefreshCw, Trash2, Copy } from 'lucide-vue-next'
 import { Key as KeyIcon } from 'lucide-vue-next'
 import { apikeyApi } from '@/apis/apikey_api'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
+const canIssueKeys = computed(() => userStore.isAdmin)
+const emptyDescription = computed(() =>
+  canIssueKeys.value ? '暂无 API Key，点击上方按钮创建一个' : '暂无 API Key，创建和重新生成仅管理员可用'
+)
 
 const loading = ref(false)
 const refreshing = ref(false)

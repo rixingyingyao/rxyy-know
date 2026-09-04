@@ -13,6 +13,7 @@ from yuxi.services.agent_invocation_service import (
 from yuxi.storage.postgres.models_business import User
 
 from server.utils.auth_middleware import get_db, get_required_user
+from server.utils.run_quota import ensure_run_quota
 
 agent_invocation_router = APIRouter(prefix="/agent-invocation", tags=["agent-invocation"])
 
@@ -55,7 +56,7 @@ class AgentEvalRunCreate(BaseModel):
 @agent_invocation_router.post("/agent-call/runs")
 async def create_agent_call_run(
     payload: AgentCallRunCreate,
-    current_user: User = Depends(get_required_user),
+    current_user: User = Depends(ensure_run_quota),
     db: AsyncSession = Depends(get_db),
 ):
     """创建外部系统 Agent 调用 run，并按 async_mode 决定是否等待最终结果。"""
@@ -91,7 +92,7 @@ async def get_agent_call_run_result(
 @agent_invocation_router.post("/eval/runs")
 async def create_agent_eval_run(
     payload: AgentEvalRunCreate,
-    current_user: User = Depends(get_required_user),
+    current_user: User = Depends(ensure_run_quota),
     db: AsyncSession = Depends(get_db),
 ):
     """运行一次 CLI/Langfuse Agent 评估样例，并阻塞等待最终输出。"""

@@ -171,6 +171,7 @@ class ConversationRepository:
         run_id: str | None = None,
         request_id: str | None = None,
         delivery_status: str = "complete",
+        token_count: int | None = None,
     ) -> Message:
         message = Message(
             conversation_id=conversation_id,
@@ -182,6 +183,7 @@ class ConversationRepository:
             run_id=run_id,
             request_id=request_id,
             delivery_status=delivery_status,
+            token_count=token_count,
         )
 
         self.db.add(message)
@@ -208,6 +210,7 @@ class ConversationRepository:
         run_id: str | None = None,
         request_id: str | None = None,
         delivery_status: str = "complete",
+        token_count: int | None = None,
     ) -> Message | None:
         conversation = await self.get_conversation_by_thread_id(thread_id)
         if not conversation:
@@ -224,6 +227,7 @@ class ConversationRepository:
             run_id=run_id,
             request_id=request_id,
             delivery_status=delivery_status,
+            token_count=token_count,
         )
 
     async def add_tool_call(

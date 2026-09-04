@@ -53,8 +53,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { authApi } from '@/apis/auth_api'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
+const userStore = useUserStore()
 const loading = ref(true)
 const approving = ref(false)
 const approved = ref(false)
@@ -95,7 +97,14 @@ async function approveSession() {
   }
 }
 
-onMounted(loadSession)
+onMounted(() => {
+  if (!userStore.isAdmin) {
+    errorMessage.value = '需要管理员权限才能授权命令行登录'
+    loading.value = false
+    return
+  }
+  loadSession()
+})
 </script>
 
 <style scoped lang="less">

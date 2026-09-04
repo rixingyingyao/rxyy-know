@@ -8,7 +8,7 @@ from yuxi import config, get_version
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils.logging_config import logger
 
-from server.utils.auth_middleware import get_admin_user, get_required_user
+from server.utils.auth_middleware import get_admin_user, get_required_user, get_superadmin_user
 
 system = APIRouter(prefix="/system", tags=["system"])
 
@@ -181,6 +181,40 @@ async def reload_info_config(current_user: User = Depends(get_admin_user)):
     except Exception as e:
         logger.error(f"重新加载信息配置失败: {e}")
         raise HTTPException(status_code=500, detail="重新加载信息配置失败")
+
+
+# =============================================================================
+# === 试用账号清空 ===
+# =============================================================================
+
+
+@system.get("/trial-cleanup")
+async def get_trial_cleanup_config(current_user: User = Depends(get_superadmin_user)):
+    """查看每晚清空的目标账号与执行时刻（Asia/Shanghai）。"""
+    from yuxi.services.trial_cleanup_service import (
+        TRIAL_CLEANUP_HOUR,
+        TRIAL_CLEANUP_MINUTE,
+        TRIAL_CLEANUP_USERNAMES,
+        cleanup_enabled,
+    )
+
+    return {
+        "enabled": cleanup_enabled(),
+        "usernames": list(TRIAL_CLEANUP_USERNAMES),
+        "schedule": f"{TRIAL_CLEANUP_HOUR:02d}:{TRIAL_CLEANUP_MINUTE:02d} Asia/Shanghai",
+    }
+
+
+@system.post("/trial-cleanup")
+async def run_trial_cleanup_now(current_user: User = Depends(get_superadmin_user)):
+    """立刻清空试用账号名下内容（与 worker 每晚跑的是同一份逻辑），返回清理明细。"""
+    from yuxi.services.trial_cleanup_service import cleanup_trial_users
+
+    try:
+        return await cleanup_trial_users()
+    except Exception as e:
+        logger.error(f"试用账号清空失败: {e}")
+        raise HTTPException(status_code=500, detail=f"试用账号清空失败: {e}")
 
 
 # =============================================================================

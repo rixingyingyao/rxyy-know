@@ -21,6 +21,7 @@ from yuxi import config as sys_config
 from yuxi.agents.mcp.service import get_enabled_mcp_server_slugs
 from yuxi.agents.skills.repository import SkillRepository
 from yuxi.storage.postgres.models_business import Skill, User
+from yuxi.utils.capability_gates import skill_hidden_for_user
 from yuxi.utils.logging_config import logger
 from yuxi.utils.share_config import SHARE_ACCESS_LEVELS, normalize_share_config
 
@@ -135,6 +136,8 @@ def normalize_skill_share_config(
 
 def user_can_access_skill(user: User, skill: Skill, *, require_enabled: bool = True) -> bool:
     if require_enabled and not skill.enabled:
+        return False
+    if skill_hidden_for_user(getattr(skill, "slug", None), getattr(user, "role", None)):
         return False
     if user.role == "superadmin":
         return True

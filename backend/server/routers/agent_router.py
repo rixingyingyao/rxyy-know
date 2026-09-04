@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.utils.auth_middleware import get_admin_user, get_db, get_required_user
+from server.utils.run_quota import ensure_run_quota, get_quota_snapshot
 from yuxi.agents.buildin import agent_manager
 from yuxi.agents.context import filter_config_by_role
 from yuxi.repositories.agent_repository import (
@@ -166,6 +167,13 @@ async def create_agent(
     return {"agent": await _serialize_agent(repo, item, current_user, include_configurable_items=True)}
 
 
+# 必须排在 /{agent_id} 之前，否则会被当成 slug=quota 的智能体查询。
+@agent_router.get("/quota")
+async def get_run_quota(current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)):
+    """当前用户今日对话配额（管理员 unlimited=true）。"""
+    return {"quota": await get_quota_snapshot(db, current_user)}
+
+
 @agent_router.get("/{agent_id}")
 async def get_agent(agent_id: str, current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)):
     repo = AgentRepository(db)
@@ -255,7 +263,7 @@ async def set_agent_default(
 @agent_router.post("/runs")
 async def create_agent_run(
     payload: AgentRunCreate,
-    current_user: User = Depends(get_required_user),
+    current_user: User = Depends(ensure_run_quota),
     db: AsyncSession = Depends(get_db),
 ):
     input_message = None

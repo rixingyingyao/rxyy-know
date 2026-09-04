@@ -3,7 +3,9 @@
     <div class="header-section">
       <div class="header-content">
         <div class="section-title">账户设置</div>
-        <p class="section-description">管理当前账户资料、身份信息和 API Key。</p>
+        <p class="section-description">
+          {{ userStore.isAdmin ? '管理当前账户资料、身份信息和 API Key。' : '管理当前账户资料和身份信息。' }}
+        </p>
       </div>
       <a-button class="lucide-icon-btn" :loading="refreshing" @click="refreshProfile">
         <template #icon><RefreshCw :size="16" :class="{ spin: refreshing }" /></template>
@@ -104,7 +106,7 @@
       </div>
     </div>
 
-    <div class="account-card apikey-card">
+    <div v-if="userStore.isAdmin" class="account-card apikey-card">
       <ApiKeyManagementComponent />
     </div>
   </div>

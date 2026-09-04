@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.utils.auth_middleware import get_current_user, get_db, get_required_user
+from server.utils.auth_middleware import get_admin_user, get_current_user, get_db, get_required_user
 from yuxi.config import UserConfig, UserConfigSchema, UserConfigUpdate
 from yuxi.storage.minio import upload_image_to_minio
 from yuxi.storage.postgres.models_business import APIKey, AgentEnv, User
@@ -179,9 +179,11 @@ async def list_api_keys(
 @user_router.post("/apikey/", response_model=APIKeyCreateResponse)
 async def create_api_key(
     data: APIKeyCreate,
-    current_user: User = Depends(get_required_user),
+    current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # 签发收成管理员权限：普通用户拿到 key 就能脱离网页无限调 /api/agent/runs，
+    # 试用账号对外开放后这是最容易被脚本利用的费用口子。已有 key 的启停 / 删除仍归持有人。
     if data.user_id and data.user_id != current_user.id and current_user.role != "superadmin":
         raise HTTPException(status_code=403, detail="无权为其他用户创建 API Key")
 
@@ -271,7 +273,7 @@ async def delete_api_key(
 @user_router.post("/apikey/{api_key_id}/regenerate", response_model=APIKeyCreateResponse)
 async def regenerate_api_key(
     api_key_id: int,
-    current_user: User = Depends(get_required_user),
+    current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     api_key = await get_accessible_api_key(db, api_key_id, current_user)

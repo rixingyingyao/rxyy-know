@@ -324,9 +324,10 @@ async def get_cli_session(
 @auth.post("/cli/sessions/{user_code}/approve", response_model=CLIAuthApproveResponse)
 async def approve_cli_session(
     user_code: str,
-    current_user: User = Depends(get_required_user),
+    current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # 批准后 exchange 会给批准人签发 API Key，口径与 POST /api/user/apikey/ 一致：只有管理员能拿 key。
     try:
         session = await approve_cli_auth_session(db, user_code, current_user)
     except CLIAuthError as exc:

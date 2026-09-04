@@ -8,6 +8,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import Agent, User
+from yuxi.utils.capability_gates import agent_hidden_for_user
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.utils.share_config import SHARE_ACCESS_LEVELS, normalize_share_config
 
@@ -142,6 +143,8 @@ def normalize_agent_share_config(
 
 
 def user_can_access_agent(user: User, agent: Agent) -> bool:
+    if agent_hidden_for_user(getattr(agent, "slug", None), getattr(user, "role", None)):
+        return False
     if user.role == "superadmin":
         return True
     user_uid = str(user.uid)

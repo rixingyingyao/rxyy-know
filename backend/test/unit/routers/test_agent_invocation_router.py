@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from server.utils.auth_middleware import get_db, get_required_user
+from server.utils.run_quota import ensure_run_quota
 
 agent_invocation_router_module = importlib.import_module("server.routers.agent_invocation_router")
 
@@ -26,6 +27,8 @@ def _build_app(monkeypatch: pytest.MonkeyPatch, *, authenticated: bool = True) -
             return SimpleNamespace(uid="user-1", role="user", department_id=1)
 
         app.dependency_overrides[get_required_user] = fake_user
+        # 配额闸单独在 test_run_quota.py 覆盖；这里只验路由与 service 的参数透传
+        app.dependency_overrides[ensure_run_quota] = fake_user
 
     return TestClient(app)
 

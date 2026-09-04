@@ -395,6 +395,19 @@ async def _get_existing_message_ids(conv_repo: ConversationRepository, thread_id
     }
 
 
+def message_total_tokens(msg_dict: dict | None) -> int | None:
+    """从模型返回的 usage_metadata 取本条 assistant 消息的 total_tokens；没有就返回 None，不估算。"""
+    if not isinstance(msg_dict, dict):
+        return None
+    usage = msg_dict.get("usage_metadata")
+    if not isinstance(usage, dict):
+        return None
+    total = usage.get("total_tokens")
+    if isinstance(total, bool) or not isinstance(total, int):
+        return None
+    return total if total >= 0 else None
+
+
 async def _save_ai_message(
     conv_repo: ConversationRepository,
     thread_id: str,
@@ -429,6 +442,7 @@ async def _save_ai_message(
         extra_metadata=extra_metadata,
         run_id=run_id,
         request_id=request_id,
+        token_count=message_total_tokens(msg_dict),
     )
 
     if ai_msg and tool_calls_data:
@@ -484,6 +498,7 @@ async def save_partial_message(
             content = full_msg.content if hasattr(full_msg, "content") else str(full_msg)
             extra_metadata = msg_dict | extra_metadata
         else:
+            msg_dict = {}
             content = ""
 
         if trace_info:
@@ -497,6 +512,7 @@ async def save_partial_message(
             extra_metadata=extra_metadata,
             run_id=run_id,
             request_id=request_id,
+            token_count=message_total_tokens(msg_dict),
         )
 
     except Exception as e:
